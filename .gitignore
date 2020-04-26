@@ -1,0 +1,11 @@
+.DS_Store
+.RData
+.Rhistory
+.Rproj.user/
+.cache/
+
+archive/
+data/
+
+project.Rproj
+
