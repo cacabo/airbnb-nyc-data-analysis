@@ -21,8 +21,9 @@ library(rgdal)
 # ================================================================
 
 # Source: http://insideairbnb.com/get-the-data.html
-# jan_listings <- read.csv('./data/jan-listings.csv')
+jan_listings <- read.csv('./data/jan-listings.csv')
 listings <- read.csv('./data/listings.csv')
+nyc_inside_airbnb_data <- read.csv('./data/nyc-inside-airbnb.csv')
 neighborhoods <- read.csv('./data/neighbourhoods.csv')
 neighborhoodsgeo <- readOGR('./data/neighbourhoods.geojson')
 
@@ -101,7 +102,8 @@ plot_hist <- function (data, title, xlabel, ylabel, bins = 60) {
   qplot(data,
         geom = "histogram",
         bins = bins,
-        fill = I(GREEN),) +
+        fill = I(GREEN),
+  ) +
     ggtitle(title) +
     xlab(xlabel) +
     ylab(ylabel)
@@ -207,7 +209,8 @@ listings %>% count(room_type)
 plot_pie(listings, listings$room_type, "Room Type")
 
 unfiltered_listings <- listings
-listings <- unfiltered_listings %>% filter(room_type %in% c("Entire home/apt", "Private room"))
+listings <-
+  unfiltered_listings %>% filter(room_type %in% c("Entire home/apt", "Private room"))
 
 # Also focus on specific property types
 levels(listings$property_type)
@@ -283,6 +286,7 @@ get_upper_tri <- function(cormat) {
   return(cormat)
 }
 
+# Looking at correlations between variables in the data
 cor(x = (listings %>%
            select(
              c(
@@ -329,6 +333,38 @@ cor(x = (listings %>%
   ylab("") +
   guides(fill = guide_legend(title = "Correlation")) +
   geom_tile()
+"
+Nothing correlates particularly well with price except maybe square feet, number of beds,
+and the number of people the listing accommodates
+
+That is, ratings don't correlate particularly strongly with listing price, likely because
+hosts have a lot of agency over the price that they list at (though Airbnb will
+recommend certain prices).
+"
+
+# Digging into availability
+listings %>% count(has_availability) # All have availability...not clear what this means
+plot_hist(listings$availability_365, "365 Day Availability", "Availability", "Frequency")
+plot_hist(listings$availability_30, "30 Day Availability", "Availability", "Frequency", 30)
+listings %>% count(availability_365) %>% arrange(availability_365) %>% head(10)
+"
+Many have 0 availability going forwards...are they booked or off the market for other
+reasons?
+"
+listings %>%
+  filter(availability_365 == 0) %>%
+  select(availability_30, availability_60, availability_90) %>%
+  sample_n(10)
+# These are all 0 as well, so the columns are as we would expect
+listings %>%
+  filter(availability_365 == 0) %>%
+  select(listing_url) %>%
+  sample_n(10)
+
+# This is not due to the virus as the trend persists in January data:
+plot_hist(jan_listings$availability_365, "365 Day Availability January", "Availability", "Frequency")
+
+
 
 listings %>% count(accommodates)
 #     accommodates     n
@@ -539,7 +575,7 @@ The vast majority are still quite active into the start of 2020
 We also see that the last reviews curve is far more volatile than the first reviews curve
 indicating some notion of seasonality
 "
-ggplot(listings[!is.na(listings$host_has_multi),]) +
+ggplot(listings[!is.na(listings$host_has_multi), ]) +
   geom_density(
     show.legend = TRUE,
     aes(x = first_review_date, colour = host_has_multi, fill = host_has_multi),
@@ -607,7 +643,7 @@ sum(is.na(hosts$host_listings_count)) # -> 5
 sum(hosts$host_listings_count == 0, na.rm = TRUE)
 # 3974 hosts have no listings...maybe there is some sort of federated system
 
-hosts_with_listings <- hosts[hosts$host_listings_count > 0,]
+hosts_with_listings <- hosts[hosts$host_listings_count > 0, ]
 
 qplot(
   hosts_with_listings$host_listings_count,
@@ -680,7 +716,7 @@ distribution across boroughs
 "
 
 listings_by_multihosts <-
-  listings[listings$host_total_listings_count > 1,]
+  listings[listings$host_total_listings_count > 1, ]
 nrow(listings_by_multihosts)
 # -> 18985
 plot_listings(listings_by_multihosts)
@@ -688,11 +724,11 @@ plot_listings(listings_by_multihosts)
 
 # TODO maybe just plot these in different colors
 
-plot_listings(listings[listings$license != "",])
+plot_listings(listings[listings$license != "", ])
 # Very few properties have a "license"
 
 zeus_host_id <- 48005494
-plot_listings(listings[listings$host_id == zeus_host_id,])
+plot_listings(listings[listings$host_id == zeus_host_id, ])
 # Zues is more strongly clustered in and around Manhattan
 # Unique bucket in the financial district
 # Locations are clustered together, perhaps making management and upkeep easier
@@ -747,9 +783,6 @@ listings %>% count(neighbourhood_cleansed) %>% arrange(desc(n)) %>% head(10)
 #   9 Crown Heights           1123
 #  10 Midtown                 1042
 
-# TODO continue
-# TODO map?
-
 # ================================================================
 # NYC housing data
 # ================================================================
@@ -766,7 +799,7 @@ drops <- c(
   "NTA...Neighborhood.Tabulation.Area",
   "X6.BR..Units"
 )
-housing <- housing[,!(names(housing) %in% drops)]
+housing <- housing[, !(names(housing) %in% drops)]
 
 colnames(housing)
 
@@ -792,16 +825,13 @@ leaflet(housing) %>%
 
 # Airbnb data:
 
-# TODO look at average number of nights occupancy histogram
 # TODO properties by new hosts vs properties by "commercial" hosts
 # TODO revenue of commercial hosts vs. non-commercial hosts
 # TODO feature engineering: how much does this hurt the local economy?
-# TODO break things up by the neighborhood or census tract level
 
 # Requires more data:
 
 # TODO overlay price controlled housing and Airbnb locations?
-# TODO potentially look at homelessness?
 
 # TODO look at availability
 # TODO...what is monthly price? This is not what I thought it was...
@@ -828,7 +858,8 @@ leaflet(neighborhoodsgeo) %>%
     title = "Neighborhood Group"
   )
 
-pal <- colorFactor("viridis", domain = neighborhoodsgeo$neighbourhood)
+pal <-
+  colorFactor("viridis", domain = neighborhoodsgeo$neighbourhood)
 leaflet(neighborhoodsgeo) %>%
   addMap() %>%
   addPolygons(
@@ -842,23 +873,38 @@ leaflet(neighborhoodsgeo) %>%
 # TODO rental data on a per neighborhood basis?
 
 plot_listings_in_shapes <- function(listings, shapes) {
+  num_shapes <- nrow(shapes)
+  
   leaflet() %>%
     addMap() %>%
     addPolygons(
       data = shapes,
       stroke = TRUE,
       color = GREEN,
-      fillOpacity = 0.05,
-      weight = 3
+      fillOpacity = 0.02,
+      weight = if (num_shapes == 1)
+        3
+      else
+        1.5,
+      label = if (num_shapes == 1)
+        NULL
+      else
+        ~ neighbourhood
     ) %>%
     addCircleMarkers(
       data = listings,
       lng =  ~ longitude,
       lat =  ~ latitude,
-      radius = 2,
+      radius = if (num_shapes == 1)
+        3
+      else
+        1,
       color = CORAL,
       stroke = FALSE,
-      fillOpacity = 0.5,
+      fillOpacity = if (num_shapes == 1)
+        0.5
+      else
+        0.25
     )
 }
 
@@ -866,7 +912,7 @@ plot_listings_in_neighborhood <- function(n) {
   neighborhood_listings <-
     listings %>% filter(neighbourhood_cleansed == n)
   neighborhood_geo <-
-    neighborhoodsgeo[neighborhoodsgeo$neighbourhood == n,]
+    neighborhoodsgeo[neighborhoodsgeo$neighbourhood == n, ]
   if (nrow(neighborhood_listings) == 0 ||
       nrow(neighborhood_geo) == 0) {
     warning("Unknown neighborhood parameter")
@@ -876,8 +922,30 @@ plot_listings_in_neighborhood <- function(n) {
   plot_listings_in_shapes(neighborhood_listings, neighborhood_geo)
 }
 
+plot_listings_in_neighborhood_group <- function(g) {
+  neighborhood_listings <-
+    listings %>% filter(neighbourhood_group_cleansed == g)
+  geo <-
+    neighborhoodsgeo[neighborhoodsgeo$neighbourhood_group == g,]
+  if (nrow(neighborhood_listings) == 0 ||
+      nrow(geo) == 0) {
+    warning("Unknown neighborhood group parameter")
+    return()
+  }
+  
+  plot_listings_in_shapes(neighborhood_listings, geo)
+}
+
 plot_listings_in_neighborhood("Flatiron District")
 plot_listings_in_neighborhood("Williamsburg")
+plot_listings_in_neighborhood("East Harlem")
+
+plot_listings_in_neighborhood_group("Brooklyn")
+plot_listings_in_neighborhood_group("Manhattan")
 
 
-neighborhoods %>% select(neighbourhood) %>% sample_n(10)
+
+# TODO
+
+colnames(nyc_inside_airbnb_data)
+nyc_inside_airbnb_data %>% select(value) %>% head(10)
