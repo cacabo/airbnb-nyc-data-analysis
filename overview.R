@@ -74,6 +74,23 @@ theme_set(theme)
 # Helper Functions
 # ================================================================================
 
+# Convert from text like "$5,000.00" to numbers like 5000
+price_as_double <- function (data) {
+  return(data %>%
+           as.character() %>%
+           {
+             gsub(",", "", .)
+           } %>%
+           {
+             gsub("\\$", "", .)
+           } %>%
+           str_trim() %>%
+           as.numeric())
+}
+
+# Rename a column in the provided dataframe with name specified by old to name
+# specified by new. Returns the altered dataframe and does NOT change the
+# provided dataframe in place
 rename_column <- function (data, old, new) {
   names(data)[names(data) == old] <- new
   return(data)
@@ -91,7 +108,7 @@ plot_hist <- function (data, title, xlabel, ylabel, bins = 60) {
 }
 
 plot_pie <- function (data, column, title) {
-  ggplot(data, aes(x = "", fill = column)) +
+  ggplot(data, aes(x = "", fill = data[[column]])) +
     geom_bar(stat = "count",
              width = 1,
              color = "white") +
@@ -323,6 +340,44 @@ plot_housing_in_neighborhood_group <- function(g) {
             shapes = get_neighborhood_group_geo(g))
 }
 
+# Looking at correlations between variables in the data
+plot_cor_matrix <- function (data, columns) {
+  # http://www.sthda.com/english/wiki/ggplot2-quick-correlation-matrix-heatmap-r-software-and-data-visualization
+  get_upper_tri <- function(cormat) {
+    cormat[lower.tri(cormat)] <- NA
+    return(cormat)
+  }
+
+  cor(x = (data %>% select(columns)),
+      y = NULL,
+      use = "complete.obs") %>%
+    get_upper_tri() %>%
+    melt() %>%
+    ggplot(aes(x = Var1, y = Var2, fill = value)) +
+    geom_tile(color = "white") +
+    scale_fill_gradient2(
+      low = "blue",
+      high = "red",
+      mid = "white",
+      midpoint = 0,
+      limit = c(-1, 1),
+      space = "Lab",
+      name = "complete.obs",
+      na.value = "white"
+    ) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(
+      angle = 90,
+      vjust = 0,
+      hjust = 0
+    )) +
+    scale_x_discrete(position = "top") +
+    xlab("") +
+    ylab("") +
+    guides(fill = guide_legend(title = "Correlation")) +
+    geom_tile()
+}
+
 # ================================================================================
 # Feature Engineering
 # ================================================================================
@@ -389,10 +444,11 @@ colnames(listings)
 # [111] "weekly_price_double"                          "monthly_price_double"                        
 # [113] "host_has_multi"
 
-listings <- rename_column(listings, "neighbourhood", "neighborhood")
-listings <- rename_column(listings, "neighbourhood_cleansed", "neighborhood_cleansed")
-listings <- rename_column(listings, "neighbourhood_group_cleansed", "neighborhood_group_cleansed")
-listings <- rename_column(listings, "host_neighbourhood", "host_neighborhood")
+listings <- listings %>%
+  rename_column("neighbourhood", "neighborhood") %>%
+  rename_column("neighbourhood_cleansed", "neighborhood_cleansed") %>%
+  rename_column("neighbourhood_group_cleansed", "neighborhood_group_cleansed") %>%
+  rename_column("host_neighbourhood", "host_neighborhood")
 
 names(listings)
 
@@ -406,20 +462,6 @@ listings$last_scraped_date <-
 
 # Convert to TRUE/FALSE
 listings$has_availability <- listings$has_availability == "t"
-
-# Convert from text like "$5,000.00" to numbers like 5000
-price_as_double <- function (data) {
-  return(data %>%
-           as.character() %>%
-           {
-             gsub(",", "", .)
-           } %>%
-           {
-             gsub("\\$", "", .)
-           } %>%
-           str_trim() %>%
-           as.numeric())
-}
 
 listings$price_double         <- price_as_double(listings$price)
 listings$weekly_price_double  <-
@@ -435,18 +477,11 @@ listings$host_has_multi <-
 # --------------------------------------------------------------------------------
 
 # Rename strangely labelled columns
-housing$`Latitude.Internal` <- housing$`Latitude..Internal.`
-housing$`Longitude.Internal` <- housing$`Longitude..Internal.`
-housing$`NTA.Neighborhood.Tabulation.Area` <-
-  housing$`NTA...Neighborhood.Tabulation.Area`
-housing$`X6.BR.Units` <- housing$`X6.BR..Units`
-drops <- c(
-  "Latitude..Internal.",
-  "Longitude..Internal.",
-  "NTA...Neighborhood.Tabulation.Area",
-  "X6.BR..Units"
-)
-housing <- housing[, !(names(housing) %in% drops)]
+housing <- housing %>%
+  rename_column('Latitude..Internal.', 'Latitude.Internal') %>%
+  rename_column('Longitude..Internal.', 'Longitude.Internal') %>%
+  rename_column('NTA...Neighborhood.Tabulation.Area', 'NTA.Neighborhood.Tabulation.Area') %>%
+  rename_column('X6.BR..Units', 'X6.BR.Units')
 
 plot_hist(
   (housing %>% filter(is.na(Latitude)))$Total.Units,
@@ -468,8 +503,9 @@ names(neighborhoodsgeo)
 # [1] "neighbourhood_group" "neighbourhood"
 
 # Rename to be consistent with other data
-neighborhoodsgeo <- rename_column(neighborhoodsgeo, "neighbourhood", "neighborhood")
-neighborhoodsgeo <- rename_column(neighborhoodsgeo, "neighbourhood_group", "neighborhood_group")
+neighborhoodsgeo <- neighborhoodsgeo %>%
+  rename_column("neighbourhood", "neighborhood") %>%
+  rename_column("neighbourhood_group", "neighborhood_group")
 
 neighborhoodsgeo$neighborhood
 neighborhoodsgeo$neighborhood_group
@@ -479,8 +515,9 @@ colnames(neighborhoods)
 # NOTE this dataset is effectively just for making joins/other aggregations easier
 
 # Rename to be consistent with other data
-neighborhoods <- rename_column(neighborhoods, "neighbourhood", "neighborhood")
-neighborhoods <- rename_column(neighborhoods, "neighbourhood_group", "neighborhood_group")
+neighborhoods <- neighborhoods %>%
+  rename_column("neighbourhood", "neighborhood") %>%
+  rename_column("neighbourhood_group", "neighborhood_group")
 
 # Sanity check
 neighborhoods %>% sample_n(8) %>% select("neighborhood")
@@ -564,7 +601,7 @@ names(neighborhoodsgeo)
 # Understanding the Neighborhood Data
 # ================================================================================
 
-pal <-
+neighborhood_group_pal <-
   colorFactor("viridis", domain = neighborhoodsgeo$neighborhood_group)
 leaflet(neighborhoodsgeo) %>%
   addMap() %>%
@@ -572,17 +609,17 @@ leaflet(neighborhoodsgeo) %>%
     stroke = FALSE,
     smoothFactor = 0.3,
     fillOpacity = 1,
-    fillColor =  ~ pal(neighborhood_group),
+    fillColor =  ~ neighborhood_group_pal(neighborhood_group),
     label =  ~ neighborhood_group
   ) %>%
   addLegend(
-    pal = pal,
+    pal = neighborhood_group_pal,
     values =  ~ neighborhood_group,
     opacity = 1,
     title = "Neighborhood Group"
   )
 
-pal <-
+neighborhood_pal <-
   colorFactor("viridis", domain = neighborhoodsgeo$neighborhood)
 leaflet(neighborhoodsgeo) %>%
   addMap() %>%
@@ -590,7 +627,7 @@ leaflet(neighborhoodsgeo) %>%
     stroke = FALSE,
     smoothFactor = 0.3,
     fillOpacity = 1,
-    fillColor =  ~ pal(neighborhood),
+    fillColor =  ~ neighborhood_pal(neighborhood),
     label =  ~ neighborhood
   )
 
@@ -611,7 +648,7 @@ listings %>% count(room_type)
 # 3 Private room    22895
 # 4 Shared room      1225
 
-plot_pie(listings, listings$room_type, "Room Type")
+plot_pie(listings, "room_type", "Room Type")
 
 unfiltered_listings <- listings
 listings <-
@@ -689,44 +726,6 @@ listings %>% filter(!is.na(weekly_price_double)) %>% select(c(weekly_price_doubl
 # These are NOT expected monthly/weekly revenues
 
 # What variables correlate most strongly with price?
-# http://www.sthda.com/english/wiki/ggplot2-quick-correlation-matrix-heatmap-r-software-and-data-visualization
-get_upper_tri <- function(cormat) {
-  cormat[lower.tri(cormat)] <- NA
-  return(cormat)
-}
-
-# Looking at correlations between variables in the data
-plot_cor_matrix <- function (data, columns) {
-  cor(x = (data %>% select(columns)),
-      y = NULL,
-      use = "complete.obs") %>%
-    get_upper_tri() %>%
-    melt() %>%
-    ggplot(aes(x = Var1, y = Var2, fill = value)) +
-    geom_tile(color = "white") +
-    scale_fill_gradient2(
-      low = "blue",
-      high = "red",
-      mid = "white",
-      midpoint = 0,
-      limit = c(-1, 1),
-      space = "Lab",
-      name = "complete.obs",
-      na.value = "white"
-    ) +
-    theme_minimal() +
-    theme(axis.text.x = element_text(
-      angle = 90,
-      vjust = 0,
-      hjust = 0
-    )) +
-    scale_x_discrete(position = "top") +
-    xlab("") +
-    ylab("") +
-    guides(fill = guide_legend(title = "Correlation")) +
-    geom_tile()
-}
-
 plot_cor_matrix(listings, c(
   "price_double",
   "accommodates",
@@ -1155,7 +1154,7 @@ listings %>% count(neighborhood_group_cleansed)
 # 5 Staten Island                 323
 
 plot_pie(listings,
-         listings$neighborhood_group_cleansed,
+         "neighborhood_group_cleansed",
          "Neighborhood Group")
 
 listings %>% count(neighborhood_cleansed) %>% arrange(desc(n)) %>% head(10)
@@ -1254,8 +1253,6 @@ plot_listings_in_neighborhood_group("Manhattan")
 plot_data_in_neighborhood("Stuyvesant Town")
 plot_data_in_neighborhood("Upper East Side")
 plot_data_in_neighborhood_group("Manhattan")
-
-neighborhood_popup <- 
 
 # Plot average income per Airbnb listing per neighborhood
 pal <- colorNumeric("viridis", NULL)
