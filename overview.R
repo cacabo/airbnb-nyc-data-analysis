@@ -45,7 +45,6 @@ nrow(listings) # -> 50378
 # Source: https://streeteasy.com/blog/data-dashboard
 rent_inventory <- read.csv('./data/rent-inventory.csv')
 rent_asking <- read.csv('./data/rent-median-asking-price.csv')
-# TODO use these
 
 # ================================================================================
 # Constants and Themes
@@ -548,13 +547,22 @@ rent_data %>% sample_n(4)
 # Filter to be neighborhoods we have Airbnb data for
 rent_data <- rent_data %>% filter(neighborhood %in% neighborhoods$neighborhood)
 
-colnames(neighborhood_data)
+names(neighborhoodsgeo)
 
-# TODO
+neighborhoodsgeo <- merge(neighborhoodsgeo,
+      rent_data %>% select("neighborhood", "rent_asking", "rent_inventory"),
+      by.x = "neighborhood",
+      by.y = "neighborhood")
 
-# ================================================================
+names(neighborhoodsgeo)
+#  [1] "neighborhood"        "neighborhood_group"  "numListings"         "entireHomePercent"  
+#  [5] "pricePerNight"       "privateRoomPercent"  "sharedRoomPercent"   "nightsPerYear"      
+#  [9] "occupancy"           "monthlyIncome"       "numHighAvailability" "avgAvailability365" 
+# [13] "rent_asking"         "rent_inventory" 
+
+# ================================================================================
 # Understanding the Neighborhood Data
-# ================================================================
+# ================================================================================
 
 pal <-
   colorFactor("viridis", domain = neighborhoodsgeo$neighborhood_group)
@@ -586,9 +594,9 @@ leaflet(neighborhoodsgeo) %>%
     label =  ~ neighborhood
   )
 
-# ================================================================
+# ================================================================================
 # Filtering the data to only relevant listings
-# ================================================================
+# ================================================================================
 
 length(listings$id) # -> 50378
 
@@ -688,52 +696,53 @@ get_upper_tri <- function(cormat) {
 }
 
 # Looking at correlations between variables in the data
-cor(x = (listings %>%
-           select(
-             c(
-               "price_double",
-               "accommodates",
-               "beds",
-               "square_feet",
-               "number_of_reviews",
-               "number_of_reviews_ltm",
-               "reviews_per_month",
-               "review_scores_rating",
-               "review_scores_cleanliness",
-               "review_scores_communication",
-               "review_scores_value",
-               "review_scores_accuracy",
-               "review_scores_checkin",
-               "review_scores_location"
-             )
-           )),
-    y = NULL,
-    use = "complete.obs") %>%
-  get_upper_tri() %>%
-  melt() %>%
-  ggplot(aes(x = Var1, y = Var2, fill = value)) +
-  geom_tile(color = "white") +
-  scale_fill_gradient2(
-    low = "blue",
-    high = "red",
-    mid = "white",
-    midpoint = 0,
-    limit = c(-1, 1),
-    space = "Lab",
-    name = "complete.obs",
-    na.value = "white"
-  ) +
-  theme_minimal() +
-  theme(axis.text.x = element_text(
-    angle = 90,
-    vjust = 0,
-    hjust = 0
-  )) +
-  scale_x_discrete(position = "top") +
-  xlab("") +
-  ylab("") +
-  guides(fill = guide_legend(title = "Correlation")) +
-  geom_tile()
+plot_cor_matrix <- function (data, columns) {
+  cor(x = (data %>% select(columns)),
+      y = NULL,
+      use = "complete.obs") %>%
+    get_upper_tri() %>%
+    melt() %>%
+    ggplot(aes(x = Var1, y = Var2, fill = value)) +
+    geom_tile(color = "white") +
+    scale_fill_gradient2(
+      low = "blue",
+      high = "red",
+      mid = "white",
+      midpoint = 0,
+      limit = c(-1, 1),
+      space = "Lab",
+      name = "complete.obs",
+      na.value = "white"
+    ) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(
+      angle = 90,
+      vjust = 0,
+      hjust = 0
+    )) +
+    scale_x_discrete(position = "top") +
+    xlab("") +
+    ylab("") +
+    guides(fill = guide_legend(title = "Correlation")) +
+    geom_tile()
+}
+
+plot_cor_matrix(listings, c(
+  "price_double",
+  "accommodates",
+  "beds",
+  "square_feet",
+  "number_of_reviews",
+  "number_of_reviews_ltm",
+  "reviews_per_month",
+  "review_scores_rating",
+  "review_scores_cleanliness",
+  "review_scores_communication",
+  "review_scores_value",
+  "review_scores_accuracy",
+  "review_scores_checkin",
+  "review_scores_location"
+))
 "
 Nothing correlates particularly well with price except maybe square feet, number of beds,
 and the number of people the listing accommodates
@@ -953,9 +962,9 @@ listings <- listings %>%
 
 plot_review_dates(listings)
 
-# ================================================================
+# ================================================================================
 # Understanding variables in the data
-# ================================================================
+# ================================================================================
 
 length(listings$id) # -> 36394
 
@@ -1003,9 +1012,9 @@ ggplot(listings[!is.na(listings$host_has_multi), ]) +
   scale_colour_manual(values = c("TRUE" = CORAL, "FALSE" = GREEN)) +
   scale_fill_manual(values = c("TRUE" = CORAL, "FALSE" = GREEN))
 
-# ================================================================
+# ================================================================================
 # Looking at host data, specifically
-# ================================================================
+# ================================================================================
 
 hosts <- listings %>%
   select(
@@ -1086,9 +1095,9 @@ ggplot(data = listings) +
   guides(fill = FALSE)
 # There is no clear statistical trend
 
-# ================================================================
+# ================================================================================
 # Spatial analysis
-# ================================================================
+# ================================================================================
 
 # Plotting all Airbnb locations
 plot_data(listings = listings)
@@ -1113,9 +1122,9 @@ plot_data(listings = listings[listings$host_id == zeus_host_id, ])
 # Unique bucket in the financial district
 # Locations are clustered together, perhaps making management and upkeep easier
 
-# ================================================================
+# ================================================================================
 # Neighborhood analysis
-# ================================================================
+# ================================================================================
 
 levels(listings$neighborhood)
 # [1] ""                              "Allerton"
@@ -1163,9 +1172,9 @@ listings %>% count(neighborhood_cleansed) %>% arrange(desc(n)) %>% head(10)
 #   9 Crown Heights           1123
 #  10 Midtown                 1042
 
-# ================================================================
+# ================================================================================
 # NYC housing data
-# ================================================================
+# ================================================================================
 
 colnames(housing)
 #  [1] "Project.ID"                       "Project.Name"
@@ -1229,9 +1238,9 @@ plot_housing_in_neighborhood("SoHo")
 plot_housing_in_neighborhood("Hell's Kitchen")
 plot_housing_in_neighborhood_group("Manhattan")
 
-# ================================================================
+# ================================================================================
 # Synthesizing Data
-# ================================================================
+# ================================================================================
 
 # Mapping out some neightborhoods
 plot_listings_in_neighborhood("Flatiron District")
@@ -1246,44 +1255,64 @@ plot_data_in_neighborhood("Stuyvesant Town")
 plot_data_in_neighborhood("Upper East Side")
 plot_data_in_neighborhood_group("Manhattan")
 
+neighborhood_popup <- 
+
 # Plot average income per Airbnb listing per neighborhood
 pal <- colorNumeric("viridis", NULL)
-leaflet(neighborhoodsgeo[!is.na(neighborhoodsgeo$monthlyIncome),]) %>%
-  addMap() %>%
-  addPolygons(
-    stroke = FALSE,
-    smoothFactor = 0.3,
-    fillOpacity = 0.5,
-    fillColor = ~ pal(monthlyIncome),
-    popup = ~ paste0(
-      "<b>",
-      neighborhood,
-      "</b>",
-      "<table><tbody>",
-      "<tr><td>Avg. monthly income</td><td>$",
-      monthlyIncome,
-      "</td></tr>",
-      "<tr><td>Avg. nightly price</td><td>$",
-      pricePerNight,
-      "</td></tr>",
-      "<tr><td>Est. # listings</td><td>",
-      numListings,
-      "</td></tr>",
-      "<tr><td>Est. # highly available</td><td>",
-      numHighAvailability,
-      "</td></tr>",
-      "<tr><td>Est. occupancy rate</td><td>",
-      occupancy,
-      "</td></tr>",
-      "<tr><td>Avg nights occupied/year</td><td>",
-      nightsPerYear,
-      "</td></tr>",
-      "</tbody></table>"
+plot_neighborhoods <- function (data, col, title) {
+  filtered_data <- data[!is.na(data[[col]]),]
+  
+  leaflet(filtered_data) %>%
+    addMap() %>%
+    addPolygons(
+      stroke = FALSE,
+      smoothFactor = 0.3,
+      fillOpacity = 0.5,
+      fillColor = ~ pal(filtered_data[[col]]),
+      popup = ~ paste0(
+        "<b>",
+        neighborhood,
+        "</b>",
+        "<table><tbody>",
+        "<tr><td>Avg. monthly income</td><td>$",
+        monthlyIncome,
+        "</td></tr>",
+        "<tr><td>Avg. nightly price</td><td>$",
+        pricePerNight,
+        "</td></tr>",
+        "<tr><td>Est. # listings</td><td>",
+        numListings,
+        "</td></tr>",
+        "<tr><td>Est. # highly available</td><td>",
+        numHighAvailability,
+        "</td></tr>",
+        "<tr><td>Est. occupancy rate</td><td>",
+        occupancy,
+        "</td></tr>",
+        "<tr><td>Avg nights occupied/year</td><td>",
+        nightsPerYear,
+        "</td></tr>",
+        "<tr><td><hr /></td><td><hr /></td></tr>",
+        "<tr><td>Rent inventory</td><td>",
+        ifelse(is.na(rent_inventory), "unknown", rent_inventory),
+        "</td></tr>",
+        "<tr><td>Avg. rent asking</td><td>",
+        ifelse(is.na(rent_asking), "unknown", paste0("$", rent_asking)),
+        "</td></tr>",
+        "</tbody></table>"
+      )
+    ) %>%
+    addLegend(
+      pal = pal,
+      values = ~ filtered_data[[col]],
+      opacity = 1.0,
+      title = title
     )
-  ) %>%
-  addLegend(
-    pal = pal,
-    values = ~ monthlyIncome,
-    opacity = 1.0,
-    title = "Avg. Monthly Income"
-  )
+}
+
+plot_neighborhoods(neighborhoodsgeo, "monthlyIncome", "Avg. Airbnb Income/Month")
+plot_neighborhoods(neighborhoodsgeo, "rent_inventory", "StreetEasy Rent Inventory")
+plot_neighborhoods(neighborhoodsgeo, "rent_asking", "StreetEasy Avg. Rent Asking")
+
+plot_cor_matrix(neighborhoodsgeo@data, c("monthlyIncome", "rent_inventory", "rent_asking"))
+# Strong correlation between asking price and Airbnb expected income
