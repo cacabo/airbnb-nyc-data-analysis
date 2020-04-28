@@ -5,9 +5,9 @@
 # Twitter: @cameroncabo
 # Analyzing Airbnb's Impact on Rent and Housing in NYC
 
-# ================================================================
+# ================================================================================
 # Dependencies
-# ================================================================
+# ================================================================================
 
 library(ggplot2)
 library(dplyr)
@@ -15,19 +15,24 @@ library(stringr)
 library(leaflet)
 library(reshape2)
 library(rgdal)
+library(htmltools)
+library(sp)
 
-# ================================================================
+# ================================================================================
 # Read in data
-# ================================================================
+# ================================================================================
 
 # Source: http://insideairbnb.com/get-the-data.html
-jan_listings <- read.csv('./data/jan-listings.csv')
+# jan_listings <- read.csv('./data/jan-listings.csv')
 listings <- read.csv('./data/listings.csv')
-nyc_inside_airbnb_data <- read.csv('./data/nyc-inside-airbnb.csv')
 neighborhoods <- read.csv('./data/neighbourhoods.csv')
 neighborhoodsgeo <- readOGR('./data/neighbourhoods.geojson')
 
+# Source: https://insideairbnb.com/new-york-city/
+nyc_inside_airbnb_data <- read.csv('./data/nyc-inside-airbnb.csv')
+
 # Source: https://data.cityofnewyork.us/Housing-Development/Housing-New-York-Units-by-Building/hg8x-zxpr
+# Read more: https://www1.nyc.gov/site/housing/index.page
 housing <- read.csv('./data/Housing_New_York_Units_by_Building.csv')
 
 # Listings are removed over time for a variety of reasons, though main ones:
@@ -37,14 +42,23 @@ housing <- read.csv('./data/Housing_New_York_Units_by_Building.csv')
 # nrow(jan_listings) # -> 51361
 nrow(listings) # -> 50378
 
-# ================================================================
+# Source: https://streeteasy.com/blog/data-dashboard
+rent_inventory <- read.csv('./data/rent-inventory.csv')
+rent_asking <- read.csv('./data/rent-median-asking-price.csv')
+# TODO use these
+
+# ================================================================================
 # Constants and Themes
-# ================================================================
+# ================================================================================
 
-GREEN <- "#00A699"
-CORAL <- "#FF5A5F"
-ORANGE <- "#FC642D"
+# Colors
+GREEN       <- "#00A699"
+LIGHT_CORAL <- "#F495BB"
+CORAL       <- "#FF5A5F"
+DEEP_CORAL  <- "#BF2256"
+ORANGE      <- "#FC642D"
 
+# Theming for ggplot
 theme <- theme_minimal(base_size = 12)
 blank_theme <- theme_minimal() +
   theme(
@@ -55,48 +69,16 @@ blank_theme <- theme_minimal() +
     axis.ticks = element_blank(),
     plot.title = element_text(size = 12, face = "bold")
   )
-
 theme_set(theme)
 
-# ================================================================
-# Feature Engineering
-# ================================================================
+# ================================================================================
+# Helper Functions
+# ================================================================================
 
-# Convert to date
-listings$first_review_date <-
-  as.Date(listings$first_review, format = "%Y-%m-%d")
-listings$last_review_date  <-
-  as.Date(listings$last_review, format = "%Y-%m-%d")
-listings$last_scraped_date <-
-  as.Date(listings$last_scraped, format = "%Y-%m-%d")
-
-# Convert from text like "$5,000.00" to numbers like 5000
-price_as_double <- function (data) {
-  return(data %>%
-           as.character() %>%
-           {
-             gsub(",", "", .)
-           } %>%
-           {
-             gsub("\\$", "", .)
-           } %>%
-           str_trim() %>%
-           as.numeric())
+rename_column <- function (data, old, new) {
+  names(data)[names(data) == old] <- new
+  return(data)
 }
-
-listings$price_double         <- price_as_double(listings$price)
-listings$weekly_price_double  <-
-  price_as_double(listings$weekly_price)
-listings$monthly_price_double <-
-  price_as_double(listings$monthly_price)
-
-listings$host_has_multi <-
-  !is.na(listings$host_total_listings_count) &
-  listings$host_total_listings_count > 1
-
-# ================================================================
-# Helper functions
-# ================================================================
 
 plot_hist <- function (data, title, xlabel, ylabel, bins = 60) {
   qplot(data,
@@ -125,69 +107,484 @@ addMap <- function(map) {
   return(map %>% addProviderTiles(providers$Esri.WorldGrayCanvas))
 }
 
-# ================================================================
-# Understanding the Airbnb Data
-# ================================================================
+# Plot listings and housing projects on a map along with bounding shapes
+plot_data <-
+  function(listings = NULL,
+           housing = NULL,
+           shapes = NULL) {
+    l <- leaflet() %>%
+      addMap()
+    
+    if (!is.null(shapes)) {
+      num_shapes <- nrow(shapes)
+      
+      l <- l %>% addPolygons(
+        data = shapes,
+        stroke = TRUE,
+        color = ORANGE,
+        fillOpacity = 0.02,
+        weight = if (num_shapes == 1)
+          3
+        else
+          1.5,
+        label = if (num_shapes == 1)
+          NULL
+        else
+          ~ neighborhood
+      )
+    }
+    
+    if (!is.null(listings)) {
+      listingColor <-
+        l <- l %>%
+        addCircles(
+          data = listings,
+          lng =  ~ longitude,
+          lat =  ~ latitude,
+          radius = ~ (log2(accommodates) + 1) * 8,
+          color = ~ (ifelse(
+            availability_365 == 0,
+            LIGHT_CORAL,
+            ifelse(host_has_multi, DEEP_CORAL, CORAL)
+          )),
+          stroke = FALSE,
+          fillOpacity = 0.5,
+          popup = ~ paste0(
+            "<b>",
+            name,
+            "</b>",
+            "<table><tbody>",
+            "<tr><td>Price</td><td>",
+            price,
+            "</td></tr>",
+            "<tr><td>Host name</td><td>",
+            host_name,
+            "</td></tr>",
+            "<tr><td>Host listings count</td><td>",
+            host_listings_count,
+            "</td></tr>",
+            "<tr><td>Street</td><td>",
+            street,
+            "</td></tr>",
+            "<tr><td>Property type</td><td>",
+            property_type,
+            "</td></tr>",
+            "<tr><td>Room type</td><td>",
+            room_type,
+            "</td></tr>",
+            "<tr><td>Accommodates</td><td>",
+            accommodates,
+            "</td></tr>",
+            "<tr><td>Beds</td><td>",
+            beds,
+            "</td></tr>",
+            "<tr><td>Avail next yr</td><td>",
+            availability_365,
+            "</td></tr>",
+            "<tr><td>Listing ID</td><td>",
+            '<a href="',
+            listing_url,
+            '">',
+            id,
+            "</a></td></tr>",
+            "</tbody></table>"
+          )
+        )
+    }
+    
+    if (!is.null(housing)) {
+      l <- l %>%
+        addCircles(
+          data = housing,
+          radius = ~ (log2(Total.Units) + 1) * 8,
+          color = GREEN,
+          stroke = FALSE,
+          fillOpacity = 0.5,
+          popup = ~ paste0(
+            "<b>",
+            Project.Name,
+            "</b>",
+            "<table><tbody>",
+            "<tr><td>Street</td><td>",
+            Street,
+            "</td></tr>",
+            "<tr><td>Project start date</td><td>",
+            Project.Start.Date,
+            "<tr><td>Project completion date</td><td>",
+            Project.Completion.Date,
+            "</td></tr>",
+            "<tr><td>Extremely low income units</td><td>",
+            Extremely.Low.Income.Units,
+            "</td></tr>",
+            "<tr><td>Low income units</td><td>",
+            Low.Income.Units,
+            "</td></tr>",
+            "<tr><td>Moderate income units</td><td>",
+            Moderate.Income.Units,
+            "</td></tr>",
+            "<tr><td>Middle income units</td><td>",
+            Middle.Income.Units,
+            "</td></tr>",
+            "<tr><td>Total units</td><td>",
+            Total.Units,
+            "</td></tr>",
+            "</tbody></table>"
+          )
+        )
+    }
+    
+    l <- l %>% addLegend(
+      colors = c(GREEN, LIGHT_CORAL, CORAL, DEEP_CORAL),
+      labels = c(
+        "Housing NYC Project",
+        "Listing no availability",
+        "Listing by 1-listing host",
+        "Listing by multi-listing host"))
+    
+    return(l)
+  }
+
+get_neighborhood_geo <- function(n) {
+  neighborhood_geo <-
+    neighborhoodsgeo[neighborhoodsgeo$neighborhood == n,]
+  if (nrow(neighborhood_geo) == 0) {
+    warning("Unknown neighborhood parameter")
+    return()
+  }
+  return(neighborhood_geo)
+}
+
+get_neighborhood_group_geo <- function(g) {
+  geo <-
+    neighborhoodsgeo[neighborhoodsgeo$neighborhood_group == g,]
+  if (nrow(geo) == 0) {
+    warning("Unknown neighborhood group parameter")
+    return()
+  }
+  return(geo)
+}
+
+get_listings_in_neighborhood <- function(n) {
+  return(listings %>% filter(neighborhood_cleansed == n))
+}
+
+get_listings_in_neighborhood_group <- function(g) {
+  return(listings %>% filter(neighborhood_group_cleansed == g))
+}
+
+plot_listings_in_neighborhood <- function(n) {
+  plot_data(listings = get_listings_in_neighborhood(n),
+            shapes = get_neighborhood_geo(n))
+}
+
+plot_listings_in_neighborhood_group <- function(g) {
+  plot_data(listings = get_listings_in_neighborhood_group(g),
+            shapes = get_neighborhood_group_geo(g))
+}
+
+plot_data_in_neighborhood <- function(n) {
+  plot_data(listings = get_listings_in_neighborhood(n),
+            housing = get_housing_in_neighborhood(n),
+            shapes = get_neighborhood_geo(n))
+}
+
+plot_data_in_neighborhood_group <- function(g) {
+  plot_data(listings = get_listings_in_neighborhood_group(g),
+            housing = get_housing_in_neighborhood_group(g),
+            shapes = get_neighborhood_group_geo(g))
+}
+
+get_housing_in_neighborhood_group <- function(g) {
+  neighborhood_group_housing_mask <- (
+    !is.na(housing_idx_to_neighborhood$neighborhood_group) &
+      housing_idx_to_neighborhood$neighborhood_group == g
+  )
+  neighborhood_group_housing <-
+    housing_with_coords[neighborhood_group_housing_mask, ]
+  return(neighborhood_group_housing)
+}
+
+get_housing_in_neighborhood <- function(n) {
+  neighborhood_housing_mask <- (
+    !is.na(housing_idx_to_neighborhood$neighborhood) &
+      housing_idx_to_neighborhood$neighborhood == n
+  )
+  neighborhood_housing <-
+    housing_with_coords[neighborhood_housing_mask, ]
+  return(neighborhood_housing)
+}
+
+plot_housing_in_neighborhood <- function(n) {
+  plot_data(housing = get_housing_in_neighborhood(n),
+            shapes = get_neighborhood_geo(n))
+}
+
+plot_housing_in_neighborhood_group <- function(g) {
+  plot_data(housing = get_housing_in_neighborhood_group(g),
+            shapes = get_neighborhood_group_geo(g))
+}
+
+# ================================================================================
+# Feature Engineering
+# ================================================================================
+
+# Listings
+# --------------------------------------------------------------------------------
+
+colnames(listings)
+#   [1] "id"                                           "listing_url"                                 
+#   [3] "scrape_id"                                    "last_scraped"                                
+#   [5] "name"                                         "summary"                                     
+#   [7] "space"                                        "description"                                 
+#   [9] "experiences_offered"                          "neighborhood_overview"                       
+#  [11] "notes"                                        "transit"                                     
+#  [13] "access"                                       "interaction"                                 
+#  [15] "house_rules"                                  "thumbnail_url"                               
+#  [17] "medium_url"                                   "picture_url"                                 
+#  [19] "xl_picture_url"                               "host_id"                                     
+#  [21] "host_url"                                     "host_name"                                   
+#  [23] "host_since"                                   "host_location"                               
+#  [25] "host_about"                                   "host_response_time"                          
+#  [27] "host_response_rate"                           "host_acceptance_rate"                        
+#  [29] "host_is_superhost"                            "host_thumbnail_url"                          
+#  [31] "host_picture_url"                             "host_neighbourhood"                          
+#  [33] "host_listings_count"                          "host_total_listings_count"                   
+#  [35] "host_verifications"                           "host_has_profile_pic"                        
+#  [37] "host_identity_verified"                       "street"                                      
+#  [39] "neighbourhood"                                "neighbourhood_cleansed"                      
+#  [41] "neighbourhood_group_cleansed"                 "city"                                        
+#  [43] "state"                                        "zipcode"                                     
+#  [45] "market"                                       "smart_location"                              
+#  [47] "country_code"                                 "country"                                     
+#  [49] "latitude"                                     "longitude"                                   
+#  [51] "is_location_exact"                            "property_type"                               
+#  [53] "room_type"                                    "accommodates"                                
+#  [55] "bathrooms"                                    "bedrooms"                                    
+#  [57] "beds"                                         "bed_type"                                    
+#  [59] "amenities"                                    "square_feet"                                 
+#  [61] "price"                                        "weekly_price"                                
+#  [63] "monthly_price"                                "security_deposit"                            
+#  [65] "cleaning_fee"                                 "guests_included"                             
+#  [67] "extra_people"                                 "minimum_nights"                              
+#  [69] "maximum_nights"                               "minimum_minimum_nights"                      
+#  [71] "maximum_minimum_nights"                       "minimum_maximum_nights"                      
+#  [73] "maximum_maximum_nights"                       "minimum_nights_avg_ntm"                      
+#  [75] "maximum_nights_avg_ntm"                       "calendar_updated"                            
+#  [77] "has_availability"                             "availability_30"                             
+#  [79] "availability_60"                              "availability_90"                             
+#  [81] "availability_365"                             "calendar_last_scraped"                       
+#  [83] "number_of_reviews"                            "number_of_reviews_ltm"                       
+#  [85] "first_review"                                 "last_review"                                 
+#  [87] "review_scores_rating"                         "review_scores_accuracy"                      
+#  [89] "review_scores_cleanliness"                    "review_scores_checkin"                       
+#  [91] "review_scores_communication"                  "review_scores_location"                      
+#  [93] "review_scores_value"                          "requires_license"                            
+#  [95] "license"                                      "jurisdiction_names"                          
+#  [97] "instant_bookable"                             "is_business_travel_ready"                    
+#  [99] "cancellation_policy"                          "require_guest_profile_picture"               
+# [101] "require_guest_phone_verification"             "calculated_host_listings_count"              
+# [103] "calculated_host_listings_count_entire_homes"  "calculated_host_listings_count_private_rooms"
+# [105] "calculated_host_listings_count_shared_rooms"  "reviews_per_month"                           
+# [107] "first_review_date"                            "last_review_date"                            
+# [109] "last_scraped_date"                            "price_double"                                
+# [111] "weekly_price_double"                          "monthly_price_double"                        
+# [113] "host_has_multi"
+
+listings <- rename_column(listings, "neighbourhood", "neighborhood")
+listings <- rename_column(listings, "neighbourhood_cleansed", "neighborhood_cleansed")
+listings <- rename_column(listings, "neighbourhood_group_cleansed", "neighborhood_group_cleansed")
+listings <- rename_column(listings, "host_neighbourhood", "host_neighborhood")
+
+names(listings)
+
+# Convert to date
+listings$first_review_date <-
+  as.Date(listings$first_review, format = "%Y-%m-%d")
+listings$last_review_date  <-
+  as.Date(listings$last_review, format = "%Y-%m-%d")
+listings$last_scraped_date <-
+  as.Date(listings$last_scraped, format = "%Y-%m-%d")
+
+# Convert to TRUE/FALSE
+listings$has_availability <- listings$has_availability == "t"
+
+# Convert from text like "$5,000.00" to numbers like 5000
+price_as_double <- function (data) {
+  return(data %>%
+           as.character() %>%
+           {
+             gsub(",", "", .)
+           } %>%
+           {
+             gsub("\\$", "", .)
+           } %>%
+           str_trim() %>%
+           as.numeric())
+}
+
+listings$price_double         <- price_as_double(listings$price)
+listings$weekly_price_double  <-
+  price_as_double(listings$weekly_price)
+listings$monthly_price_double <-
+  price_as_double(listings$monthly_price)
+
+listings$host_has_multi <-
+  !is.na(listings$host_total_listings_count) &
+  listings$host_total_listings_count > 1
+
+# NYC Housing Projects Open Data
+# --------------------------------------------------------------------------------
+
+# Rename strangely labelled columns
+housing$`Latitude.Internal` <- housing$`Latitude..Internal.`
+housing$`Longitude.Internal` <- housing$`Longitude..Internal.`
+housing$`NTA.Neighborhood.Tabulation.Area` <-
+  housing$`NTA...Neighborhood.Tabulation.Area`
+housing$`X6.BR.Units` <- housing$`X6.BR..Units`
+drops <- c(
+  "Latitude..Internal.",
+  "Longitude..Internal.",
+  "NTA...Neighborhood.Tabulation.Area",
+  "X6.BR..Units"
+)
+housing <- housing[, !(names(housing) %in% drops)]
+
+plot_hist(
+  (housing %>% filter(is.na(Latitude)))$Total.Units,
+  "Units of Housing Projects with No Latitude Specified",
+  "Number of Units",
+  "Frequency"
+)
+# These are generally very small projects -> we can ignore these projects for mapping
+housing_with_coords <-
+  housing %>% filter(!is.na(Latitude) & !is.na(Longitude))
+
+housing %>% select(Total.Units, All.Counted.Units) %>% sample_n(10)
+# These are the same, just stick with total units
+
+# Merging scraped data with neighborhood data
+# --------------------------------------------------------------------------------
+
+names(neighborhoodsgeo)
+# [1] "neighbourhood_group" "neighbourhood"
+
+# Rename to be consistent with other data
+neighborhoodsgeo <- rename_column(neighborhoodsgeo, "neighbourhood", "neighborhood")
+neighborhoodsgeo <- rename_column(neighborhoodsgeo, "neighbourhood_group", "neighborhood_group")
+
+neighborhoodsgeo$neighborhood
+neighborhoodsgeo$neighborhood_group
 
 colnames(neighborhoods)
 # [1] "neighbourhood_group" "neighbourhood"
-# NOTE this dataset is effectivelt just for making joins/other aggregations easier
+# NOTE this dataset is effectively just for making joins/other aggregations easier
 
-colnames(listings)
+# Rename to be consistent with other data
+neighborhoods <- rename_column(neighborhoods, "neighbourhood", "neighborhood")
+neighborhoods <- rename_column(neighborhoods, "neighbourhood_group", "neighborhood_group")
 
-#   [1] "id"                                           "listing_url"
-#   [3] "scrape_id"                                    "last_scraped"
-#   [5] "name"                                         "summary"
-#   [7] "space"                                        "description"
-#   [9] "experiences_offered"                          "neighborhood_overview"
-#  [11] "notes"                                        "transit"
-#  [13] "access"                                       "interaction"
-#  [15] "house_rules"                                  "thumbnail_url"
-#  [17] "medium_url"                                   "picture_url"
-#  [19] "xl_picture_url"                               "host_id"
-#  [21] "host_url"                                     "host_name"
-#  [23] "host_since"                                   "host_location"
-#  [25] "host_about"                                   "host_response_time"
-#  [27] "host_response_rate"                           "host_acceptance_rate"
-#  [29] "host_is_superhost"                            "host_thumbnail_url"
-#  [31] "host_picture_url"                             "host_neighbourhood"
-#  [33] "host_listings_count"                          "host_total_listings_count"
-#  [35] "host_verifications"                           "host_has_profile_pic"
-#  [37] "host_identity_verified"                       "street"
-#  [39] "neighbourhood"                                "neighbourhood_cleansed"
-#  [41] "neighbourhood_group_cleansed"                 "city"
-#  [43] "state"                                        "zipcode"
-#  [45] "market"                                       "smart_location"
-#  [47] "country_code"                                 "country"
-#  [49] "latitude"                                     "longitude"
-#  [51] "is_location_exact"                            "property_type"
-#  [53] "room_type"                                    "accommodates"
-#  [55] "bathrooms"                                    "bedrooms"
-#  [57] "beds"                                         "bed_type"
-#  [59] "amenities"                                    "square_feet"
-#  [61] "price"                                        "weekly_price"
-#  [63] "monthly_price"                                "security_deposit"
-#  [65] "cleaning_fee"                                 "guests_included"
-#  [67] "extra_people"                                 "minimum_nights"
-#  [69] "maximum_nights"                               "minimum_minimum_nights"
-#  [71] "maximum_minimum_nights"                       "minimum_maximum_nights"
-#  [73] "maximum_maximum_nights"                       "minimum_nights_avg_ntm"
-#  [75] "maximum_nights_avg_ntm"                       "calendar_updated"
-#  [77] "has_availability"                             "availability_30"
-#  [79] "availability_60"                              "availability_90"
-#  [81] "availability_365"                             "calendar_last_scraped"
-#  [83] "number_of_reviews"                            "number_of_reviews_ltm"
-#  [85] "first_review"                                 "last_review"
-#  [87] "review_scores_rating"                         "review_scores_accuracy"
-#  [89] "review_scores_cleanliness"                    "review_scores_checkin"
-#  [91] "review_scores_communication"                  "review_scores_location"
-#  [93] "review_scores_value"                          "requires_license"
-#  [95] "license"                                      "jurisdiction_names"
-#  [97] "instant_bookable"                             "is_business_travel_ready"
-#  [99] "cancellation_policy"                          "require_guest_profile_picture"
-# [101] "require_guest_phone_verification"             "calculated_host_listings_count"
-# [103] "calculated_host_listings_count_entire_homes"  "calculated_host_listings_count_private_rooms"
-# [105] "calculated_host_listings_count_shared_rooms"  "reviews_per_month"
+# Sanity check
+neighborhoods %>% sample_n(8) %>% select("neighborhood")
+neighborhoods %>% sample_n(8) %>% select("neighborhood_group")
+
+colnames(nyc_inside_airbnb_data)
+# [1] "value"               "numListings"         "entireHomePercent"   "pricePerNight"
+# [5] "privateRoomPercent"  "sharedRoomPercent"   "nightsPerYear"       "occupancy"
+# [9] "monthlyIncome"       "numHighAvailability" "avgAvailability365"
+
+# Subset data based on geographic scope (whole city vs. borough vs. neighborhood)
+neighborhood_group_data <-
+  nyc_inside_airbnb_data %>% filter(value %in% neighborhoods$neighborhood_group)
+neighborhood_data       <-
+  nyc_inside_airbnb_data %>% filter(value %in% neighborhoods$neighborhood)
+city_data               <-
+  nyc_inside_airbnb_data %>% filter(value == 'New York City')
+
+neighborhood_data %>% nrow() # -> 228
+neighborhoods %>% nrow()     # -> 230
+neighborhoods %>% filter(!(neighborhood %in% neighborhood_data$value)) %>%
+  select(neighborhood) %>% tail(1)
+#                neighborhood
+# 1 Bay Terrace, Staten Island
+# 2     Chelsea, Staten Island
+
+plot_listings_in_neighborhood("Bay Terrace, Staten Island") # 1 listing
+plot_listings_in_neighborhood("Chelsea, Staten Island")     # 0 listings
+# -> these are not significant Airbnb markets and are very distant from NYC proper
+# Investigating more in Google Maps, these are more suburban neighborhoods
+
+neighborhoodsgeo <- merge(neighborhoodsgeo,
+                          neighborhood_data,
+                          by.x = "neighborhood",
+                          by.y = "value")
+
+# Merging with rental data
+# --------------------------------------------------------------------------------
+
+colnames(rent_inventory)
+# [1] "areaName" "Borough"  "areaType" "X2010.01" "X2010.02" ... "X2020.03"
+
+levels(rent_inventory$Borough)
+# [1] ""  "Bronx"  "Brooklyn"  "Manhattan"  "Queens"  "Staten Island"
+
+levels(rent_inventory$areaName)
+# [1] "All Downtown"                    "All Midtown"                     "All Upper East Side"            
+# [4] "All Upper Manhattan"             "All Upper West Side"             "Astoria"                        
+# [7] "Auburndale"                      "Bath Beach"                      "Battery Park City"
+# ...
+
+colnames(rent_asking)
+# [1] "areaName" "Borough"  "areaType" "X2010.01" "X2010.02" ... "X2020.03"
+
+rent_data <- data.frame(rent_asking$areaName, rent_asking$Borough, rent_asking$X2020.03, rent_inventory$X2020.03)
+colnames(rent_data) <- c("neighborhood", "neighborhood_group", "rent_asking", "rent_inventory")
+rent_data %>% sample_n(4)
+#    neighborhood neighborhood_group rent_asking rent_inventory
+# 1       Gowanus           Brooklyn        3300             71
+# 2      Edenwald              Bronx          NA              0
+# 3  Coney Island           Brooklyn        2415             42
+# 4 Schuylerville              Bronx          NA              1
+
+# Filter to be neighborhoods we have Airbnb data for
+rent_data <- rent_data %>% filter(neighborhood %in% neighborhoods$neighborhood)
+
+colnames(neighborhood_data)
+
+# TODO
+
+# ================================================================
+# Understanding the Neighborhood Data
+# ================================================================
+
+pal <-
+  colorFactor("viridis", domain = neighborhoodsgeo$neighborhood_group)
+leaflet(neighborhoodsgeo) %>%
+  addMap() %>%
+  addPolygons(
+    stroke = FALSE,
+    smoothFactor = 0.3,
+    fillOpacity = 1,
+    fillColor =  ~ pal(neighborhood_group),
+    label =  ~ neighborhood_group
+  ) %>%
+  addLegend(
+    pal = pal,
+    values =  ~ neighborhood_group,
+    opacity = 1,
+    title = "Neighborhood Group"
+  )
+
+pal <-
+  colorFactor("viridis", domain = neighborhoodsgeo$neighborhood)
+leaflet(neighborhoodsgeo) %>%
+  addMap() %>%
+  addPolygons(
+    stroke = FALSE,
+    smoothFactor = 0.3,
+    fillOpacity = 1,
+    fillColor =  ~ pal(neighborhood),
+    label =  ~ neighborhood
+  )
 
 # ================================================================
 # Filtering the data to only relevant listings
@@ -274,10 +671,14 @@ plot_hist(
 )
 MAX_PRICE <- 1000
 MAX_MONTHLY_PRICE <- 12000
-sum(is.na(listings$monthly_price_double)) # -> 43713 (vast majority)
-sum(is.na(listings$weekly_price_double))  # -> 42658 (not much better)
-sum(is.na(listings$price))                # -> 0
-# TODO there is more work to be done here...
+sum(is.na(listings$monthly_price_double)) # -> 43454 (vast majority)
+sum(is.na(listings$weekly_price_double))  # -> 42757 (not much better)
+sum(is.na(listings$price_double))         # -> 0
+
+listings %>% filter(!is.na(weekly_price_double)) %>% select(c(weekly_price_double, price_double)) %>%
+  sample_n(10)
+# These are prices that users pick to give special rates for longer term rentals
+# These are NOT expected monthly/weekly revenues
 
 # What variables correlate most strongly with price?
 # http://www.sthda.com/english/wiki/ggplot2-quick-correlation-matrix-heatmap-r-software-and-data-visualization
@@ -344,8 +745,15 @@ recommend certain prices).
 
 # Digging into availability
 listings %>% count(has_availability) # All have availability...not clear what this means
-plot_hist(listings$availability_365, "365 Day Availability", "Availability", "Frequency")
-plot_hist(listings$availability_30, "30 Day Availability", "Availability", "Frequency", 30)
+plot_hist(listings$availability_365,
+          "365 Day Availability",
+          "Availability",
+          "Frequency")
+plot_hist(listings$availability_30,
+          "30 Day Availability",
+          "Availability",
+          "Frequency",
+          30)
 listings %>% count(availability_365) %>% arrange(availability_365) %>% head(10)
 "
 Many have 0 availability going forwards...are they booked or off the market for other
@@ -362,29 +770,35 @@ listings %>%
   sample_n(10)
 
 # This is not due to the virus as the trend persists in January data:
-plot_hist(jan_listings$availability_365, "365 Day Availability January", "Availability", "Frequency")
-
-
+# plot_hist(
+#   jan_listings$availability_365,
+#   "365 Day Availability January",
+#   "Availability",
+#   "Frequency"
+# )
 
 listings %>% count(accommodates)
-#     accommodates     n
-#            <int> <int>
-#   1            1  5110
-#   2            2 16421
-#   3            3  3943
-#   4            4  5766
-#   5            5  1588
-#   6            6  2063
-#   7            7   401
-#   8            8   631
-#   9            9    87
-#  10           10   189
-#  11           11    36
-#  12           12    75
-#  13           13     8
-#  14           14    16
-#  15           15     4
-#  16           16    56
+#    accommodates     n
+#           <int> <int>
+#  1            1  6907
+#  2            2 22114
+#  3            3  5275
+#  4            4  7408
+#  5            5  1967
+#  6            6  2430
+#  7            7   476
+#  8            8   730
+#  9            9    99
+# 10           10   242
+# 11           11    44
+# 12           12   105
+# 13           13    20
+# 14           14    31
+# 15           15    12
+# 16           16   140
+# 17           19     1
+# 18           20     1
+# 19           22     1
 listings %>%
   filter(accommodates >= 15) %>%
   select(c(name, summary)) %>%
@@ -422,8 +836,8 @@ listings %>% count(beds)
 sum(is.na(listings$beds)) # -> 434
 MAX_NUM_BEDS <- 8
 
-ggplot(data = listings %>% filter(is.na(beds) |
-                                    beds <= MAX_NUM_BEDS),
+ggplot(data = listings %>%
+         filter(is.na(beds) | beds <= MAX_NUM_BEDS),
        aes(x = as.character(beds))) +
   geom_bar(stat = "count") +
   xlab("Number of Beds") +
@@ -458,8 +872,6 @@ ggplot(data = listings %>%
 We see a long tail distribution with slow ramp up
 Interesting that there is no bimodal distribution for categories like `normal` and `luxury`
 Outliers are above but not below, this makes sense
-
-TODO add line for average rental price in NYC?
 "
 
 head((listings %>% filter(is.na(beds)))$description, 10)
@@ -483,7 +895,7 @@ sum(is.na(listings$number_of_reviews)) # -> 0 (all filled in, nice)
 sum(listings$number_of_reviews == 0) # -> 9537
 listings %>%
   filter(number_of_reviews == 0) %>%
-  head(10) %>%
+  head(8) %>%
   select(description)
 # These seem to be real-ish though might be duplicates
 
@@ -504,7 +916,6 @@ plot_hist(listings$first_review_date,
           'Date',
           'Frequency',
           60)
-
 
 plot_review_dates <- function(data) {
   ggplot(data) +
@@ -611,7 +1022,7 @@ hosts <- listings %>%
       "host_is_superhost",
       "host_thumbnail_url",
       "host_picture_url",
-      "host_neighbourhood",
+      "host_neighborhood",
       "host_listings_count",
       "host_total_listings_count",
       "host_verifications",
@@ -665,13 +1076,13 @@ names and sometimes with host names which under the hood are enterprises.
 ggplot(data = listings) +
   geom_boxplot(aes(
     x = as.factor(host_has_multi),
-    y = monthly_price_double,
+    y = price_double,
     fill = host_has_multi
   )) +
   coord_flip() +
-  ylab('Monthly Price ($)') +
+  ylab('Price ($)') +
   xlab('Host has Multiple Listings') +
-  ggtitle('Monthly Price split on if Host has Multiple Listings') +
+  ggtitle('Price split on if Host has Multiple Listings') +
   guides(fill = FALSE)
 # There is no clear statistical trend
 
@@ -680,36 +1091,7 @@ ggplot(data = listings) +
 # ================================================================
 
 # Plotting all Airbnb locations
-# NOTE this is quite laggy since we are plotting so many points
-plot_listings <- function (data) {
-  count <- nrow(data)
-  
-  leaflet(data) %>%
-    setView(lng = -73.9589107,
-            lat = 40.7492607,
-            zoom = 11) %>%
-    addMap() %>%
-    addCircleMarkers(
-      lng = ~ longitude,
-      lat = ~ latitude,
-      radius = if (count > 10000)
-        1.25
-      else
-        (if (count > 1000)
-          1.5
-         else
-           2)
-      ,
-      color = CORAL,
-      stroke = FALSE,
-      fillOpacity = if (count > 1000)
-        0.05
-      else
-        0.5,
-    )
-}
-
-plot_listings(listings)
+plot_data(listings = listings)
 "
 Highly concentrated in Manhattan and Brooklyn which is disproportionate to actual housing
 distribution across boroughs
@@ -719,16 +1101,14 @@ listings_by_multihosts <-
   listings[listings$host_total_listings_count > 1, ]
 nrow(listings_by_multihosts)
 # -> 18985
-plot_listings(listings_by_multihosts)
+plot_data(listings = listings_by_multihosts)
 # Follows a similar distribution
 
-# TODO maybe just plot these in different colors
-
-plot_listings(listings[listings$license != "", ])
+plot_data(listings = listings[listings$license != "", ])
 # Very few properties have a "license"
 
 zeus_host_id <- 48005494
-plot_listings(listings[listings$host_id == zeus_host_id, ])
+plot_data(listings = listings[listings$host_id == zeus_host_id, ])
 # Zues is more strongly clustered in and around Manhattan
 # Unique bucket in the financial district
 # Locations are clustered together, perhaps making management and upkeep easier
@@ -737,40 +1117,40 @@ plot_listings(listings[listings$host_id == zeus_host_id, ])
 # Neighborhood analysis
 # ================================================================
 
-levels(listings$neighbourhood)
+levels(listings$neighborhood)
 # [1] ""                              "Allerton"
 # [3] "Alphabet City"                 "Annadale"
 # [5] "Astoria"                       "Bath Beach"
 # [7] "Battery Park City"             "Bay Ridge"
 # ...
 
-levels(listings$neighbourhood_cleansed)
+levels(listings$neighborhood_cleansed)
 # [1] "Allerton"                   "Arden Heights"              "Arrochar"
 # [4] "Arverne"                    "Astoria"                    "Bath Beach"
 # [7] "Battery Park City"          "Bay Ridge"                  "Bay Terrace"
 # ...
 
-length(unique(listings$neighbourhood))          # -> 193
-length(unique(listings$neighbourhood_cleansed)) # -> 221
-sum(listings$neighbourhood == "")               # -> 10
-sum(listings$neighbourhood_cleansed == "")      # -> 0; this is a better feature to use
-length(unique(listings$neighbourhood_group_cleansed)) # -> 5
+length(unique(listings$neighborhood))          # -> 193
+length(unique(listings$neighborhood_cleansed)) # -> 221
+sum(listings$neighborhood == "")               # -> 10
+sum(listings$neighborhood_cleansed == "")      # -> 0; this is a better feature to use
+length(unique(listings$neighborhood_group_cleansed)) # -> 5
 
-listings %>% count(neighbourhood_group_cleansed)
-#     neighbourhood_group_cleansed     n
-#     <fct>                        <int>
-#   1 Bronx                         1008
-#   2 Brooklyn                     14610
-#   3 Manhattan                    15611
-#   4 Queens                        4842
-#   5 Staten Island                  323
+listings %>% count(neighborhood_group_cleansed)
+#   neighborhood_group_cleansed     n
+#   <fct>                       <int>
+# 1 Bronx                        1002
+# 2 Brooklyn                    14570
+# 3 Manhattan                   15597
+# 4 Queens                       4826
+# 5 Staten Island                 323
 
 plot_pie(listings,
-         listings$neighbourhood_group_cleansed,
+         listings$neighborhood_group_cleansed,
          "Neighborhood Group")
 
-listings %>% count(neighbourhood_cleansed) %>% arrange(desc(n)) %>% head(10)
-#     neighbourhood_cleansed     n
+listings %>% count(neighborhood_cleansed) %>% arrange(desc(n)) %>% head(10)
+#     neighborhood_cleansed     n
 #     <fct>                  <int>
 #   1 Bedford-Stuyvesant      2908
 #   2 Williamsburg            2668
@@ -787,165 +1167,123 @@ listings %>% count(neighbourhood_cleansed) %>% arrange(desc(n)) %>% head(10)
 # NYC housing data
 # ================================================================
 
-# Rename strangely labelled columns
-housing$`Latitude.Internal` <- housing$`Latitude..Internal.`
-housing$`Longitude.Internal` <- housing$`Longitude..Internal.`
-housing$`NTA.Neighborhood.Tabulation.Area` <-
-  housing$`NTA...Neighborhood.Tabulation.Area`
-housing$`X6.BR.Units` <- housing$`X6.BR..Units`
-drops <- c(
-  "Latitude..Internal.",
-  "Longitude..Internal.",
-  "NTA...Neighborhood.Tabulation.Area",
-  "X6.BR..Units"
-)
-housing <- housing[, !(names(housing) %in% drops)]
-
 colnames(housing)
+#  [1] "Project.ID"                       "Project.Name"
+#  [3] "Program.Group"                    "Project.Start.Date"
+#  [5] "Project.Completion.Date"          "Building.ID"
+#  [7] "Number"                           "Street"
+#  [9] "Borough"                          "Postcode"
+# [11] "BBL"                              "BIN"
+# [13] "Community.Board"                  "Council.District"
+# [15] "Census.Tract"                     "Latitude"
+# [17] "Longitude"                        "Building.Completion.Date"
+# [19] "Reporting.Construction.Type"      "Extended.Affordability.Only"
+# [21] "Prevailing.Wage.Status"           "Extremely.Low.Income.Units"
+# [23] "Very.Low.Income.Units"            "Low.Income.Units"
+# [25] "Moderate.Income.Units"            "Middle.Income.Units"
+# [27] "Other.Income.Units"               "Studio.Units"
+# [29] "X1.BR.Units"                      "X2.BR.Units"
+# [31] "X3.BR.Units"                      "X4.BR.Units"
+# [33] "X5.BR.Units"                      "Unknown.BR.Units"
+# [35] "Counted.Rental.Units"             "Counted.Homeownership.Units"
+# [37] "All.Counted.Units"                "Total.Units"
+# [39] "Latitude.Internal"                "Longitude.Internal"
+# [41] "NTA.Neighborhood.Tabulation.Area" "X6.BR.Units"
+
+levels(housing$Borough)
+# [1] "Bronx"         "Brooklyn"      "Manhattan"     "Queens"        "Staten Island"
+
+levels(neighborhoods$neighborhood_group)
+# [1] "Bronx"         "Brooklyn"      "Manhattan"     "Queens"        "Staten Island"
+# -> they match up!
+
+housing %>% select(
+  Extremely.Low.Income.Units,
+  Low.Income.Units,
+  Moderate.Income.Units,
+  Middle.Income.Units
+) %>%
+  sample_n(10)
 
 "
 Plot these new project buildings in New York
 Radius proportional to number of units in the building
 "
-leaflet(housing) %>%
-  setView(lng = -73.9589107,
-          lat = 40.7492607,
-          zoom = 11) %>%
-  addMap() %>%
-  addCircles(
-    lng = ~ Longitude,
-    lat = ~ Latitude,
-    radius = ~ sqrt(All.Counted.Units) * 10,
-    color = GREEN,
-    stroke = FALSE,
-    fillOpacity = 0.5,
-  )
+plot_data(housing = housing)
 
-# TODO continue with this
+colnames(housing)
+housing %>% select(Postcode) %>% sample_n(10)
+housing %>% nrow()
 
-# Airbnb data:
+# Spatial join from housing projects to neighborhoods
+sp::coordinates(housing_with_coords) <- ~ Longitude + Latitude
+sp::proj4string(housing_with_coords) <-
+  sp::proj4string(neighborhoodsgeo)
 
-# TODO properties by new hosts vs properties by "commercial" hosts
-# TODO revenue of commercial hosts vs. non-commercial hosts
-# TODO feature engineering: how much does this hurt the local economy?
+housing_idx_to_neighborhood <-
+  sp::over(housing_with_coords, neighborhoodsgeo)
+housing_idx_to_neighborhood %>% filter(!is.na(neighborhood)) %>% count(neighborhood)
 
-# Requires more data:
+plot_housing_in_neighborhood("Astoria")
+plot_housing_in_neighborhood("SoHo")
+plot_housing_in_neighborhood("Hell's Kitchen")
+plot_housing_in_neighborhood_group("Manhattan")
 
-# TODO overlay price controlled housing and Airbnb locations?
+# ================================================================
+# Synthesizing Data
+# ================================================================
 
-# TODO look at availability
-# TODO...what is monthly price? This is not what I thought it was...
-# maybe just rip this for estimating income: http://insideairbnb.com/new-york-city/#activity
-# TODO reviews_per_month as proxy for frequency of use?
-
-
-# Plotting neighborhoods
-pal <-
-  colorFactor("viridis", domain = neighborhoodsgeo$neighbourhood_group)
-leaflet(neighborhoodsgeo) %>%
-  addMap() %>%
-  addPolygons(
-    stroke = FALSE,
-    smoothFactor = 0.3,
-    fillOpacity = 1,
-    fillColor =  ~ pal(neighbourhood_group),
-    label =  ~ neighbourhood_group
-  ) %>%
-  addLegend(
-    pal = pal,
-    values =  ~ neighbourhood_group,
-    opacity = 1,
-    title = "Neighborhood Group"
-  )
-
-pal <-
-  colorFactor("viridis", domain = neighborhoodsgeo$neighbourhood)
-leaflet(neighborhoodsgeo) %>%
-  addMap() %>%
-  addPolygons(
-    stroke = FALSE,
-    smoothFactor = 0.3,
-    fillOpacity = 1,
-    fillColor =  ~ pal(neighbourhood),
-    label =  ~ neighbourhood
-  )
-
-# TODO rental data on a per neighborhood basis?
-
-plot_listings_in_shapes <- function(listings, shapes) {
-  num_shapes <- nrow(shapes)
-  
-  leaflet() %>%
-    addMap() %>%
-    addPolygons(
-      data = shapes,
-      stroke = TRUE,
-      color = GREEN,
-      fillOpacity = 0.02,
-      weight = if (num_shapes == 1)
-        3
-      else
-        1.5,
-      label = if (num_shapes == 1)
-        NULL
-      else
-        ~ neighbourhood
-    ) %>%
-    addCircleMarkers(
-      data = listings,
-      lng =  ~ longitude,
-      lat =  ~ latitude,
-      radius = if (num_shapes == 1)
-        3
-      else
-        1,
-      color = CORAL,
-      stroke = FALSE,
-      fillOpacity = if (num_shapes == 1)
-        0.5
-      else
-        0.25
-    )
-}
-
-plot_listings_in_neighborhood <- function(n) {
-  neighborhood_listings <-
-    listings %>% filter(neighbourhood_cleansed == n)
-  neighborhood_geo <-
-    neighborhoodsgeo[neighborhoodsgeo$neighbourhood == n, ]
-  if (nrow(neighborhood_listings) == 0 ||
-      nrow(neighborhood_geo) == 0) {
-    warning("Unknown neighborhood parameter")
-    return()
-  }
-  
-  plot_listings_in_shapes(neighborhood_listings, neighborhood_geo)
-}
-
-plot_listings_in_neighborhood_group <- function(g) {
-  neighborhood_listings <-
-    listings %>% filter(neighbourhood_group_cleansed == g)
-  geo <-
-    neighborhoodsgeo[neighborhoodsgeo$neighbourhood_group == g,]
-  if (nrow(neighborhood_listings) == 0 ||
-      nrow(geo) == 0) {
-    warning("Unknown neighborhood group parameter")
-    return()
-  }
-  
-  plot_listings_in_shapes(neighborhood_listings, geo)
-}
-
+# Mapping out some neightborhoods
 plot_listings_in_neighborhood("Flatiron District")
 plot_listings_in_neighborhood("Williamsburg")
 plot_listings_in_neighborhood("East Harlem")
 
+# Mapping out some boroughs
 plot_listings_in_neighborhood_group("Brooklyn")
 plot_listings_in_neighborhood_group("Manhattan")
 
+plot_data_in_neighborhood("Stuyvesant Town")
+plot_data_in_neighborhood("Upper East Side")
+plot_data_in_neighborhood_group("Manhattan")
 
-
-# TODO
-
-colnames(nyc_inside_airbnb_data)
-nyc_inside_airbnb_data %>% select(value) %>% head(10)
+# Plot average income per Airbnb listing per neighborhood
+pal <- colorNumeric("viridis", NULL)
+leaflet(neighborhoodsgeo[!is.na(neighborhoodsgeo$monthlyIncome),]) %>%
+  addMap() %>%
+  addPolygons(
+    stroke = FALSE,
+    smoothFactor = 0.3,
+    fillOpacity = 0.5,
+    fillColor = ~ pal(monthlyIncome),
+    popup = ~ paste0(
+      "<b>",
+      neighborhood,
+      "</b>",
+      "<table><tbody>",
+      "<tr><td>Avg. monthly income</td><td>$",
+      monthlyIncome,
+      "</td></tr>",
+      "<tr><td>Avg. nightly price</td><td>$",
+      pricePerNight,
+      "</td></tr>",
+      "<tr><td>Est. # listings</td><td>",
+      numListings,
+      "</td></tr>",
+      "<tr><td>Est. # highly available</td><td>",
+      numHighAvailability,
+      "</td></tr>",
+      "<tr><td>Est. occupancy rate</td><td>",
+      occupancy,
+      "</td></tr>",
+      "<tr><td>Avg nights occupied/year</td><td>",
+      nightsPerYear,
+      "</td></tr>",
+      "</tbody></table>"
+    )
+  ) %>%
+  addLegend(
+    pal = pal,
+    values = ~ monthlyIncome,
+    opacity = 1.0,
+    title = "Avg. Monthly Income"
+  )
