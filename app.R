@@ -96,8 +96,7 @@ plot_hist <- function (data, title, xlabel, ylabel, bins = 60) {
   qplot(data,
         geom = "histogram",
         bins = bins,
-        fill = I(GREEN),
-  ) +
+        fill = I(GREEN),) +
     ggtitle(title) +
     xlab(xlabel) +
     ylab(ylabel)
@@ -260,7 +259,7 @@ plot_data <-
 
 get_neighborhood_geo <- function(n) {
   neighborhood_geo <-
-    neighborhoodsgeo[neighborhoodsgeo$neighborhood == n,]
+    neighborhoodsgeo[neighborhoodsgeo$neighborhood == n, ]
   if (nrow(neighborhood_geo) == 0) {
     warning("Unknown neighborhood parameter")
     return()
@@ -270,7 +269,7 @@ get_neighborhood_geo <- function(n) {
 
 get_neighborhood_group_geo <- function(g) {
   geo <-
-    neighborhoodsgeo[neighborhoodsgeo$neighborhood_group == g,]
+    neighborhoodsgeo[neighborhoodsgeo$neighborhood_group == g, ]
   if (nrow(geo) == 0) {
     warning("Unknown neighborhood group parameter")
     return()
@@ -314,7 +313,7 @@ get_housing_in_neighborhood_group <- function(g) {
       housing_idx_to_neighborhood$neighborhood_group == g
   )
   neighborhood_group_housing <-
-    housing_with_coords[neighborhood_group_housing_mask, ]
+    housing_with_coords[neighborhood_group_housing_mask,]
   return(neighborhood_group_housing)
 }
 
@@ -324,7 +323,7 @@ get_housing_in_neighborhood <- function(n) {
       housing_idx_to_neighborhood$neighborhood == n
   )
   neighborhood_housing <-
-    housing_with_coords[neighborhood_housing_mask, ]
+    housing_with_coords[neighborhood_housing_mask,]
   return(neighborhood_housing)
 }
 
@@ -462,8 +461,10 @@ neighborhoods %>% filter(!(neighborhood %in% neighborhood_data$value)) %>%
 # 1 Bay Terrace, Staten Island
 # 2     Chelsea, Staten Island
 
-bay_terrace_staten_island_map <- plot_listings_in_neighborhood("Bay Terrace, Staten Island") # 1 listing
-chelsea_staten_island_map <- plot_listings_in_neighborhood("Chelsea, Staten Island")     # 0 listings
+bay_terrace_staten_island_map <-
+  plot_listings_in_neighborhood("Bay Terrace, Staten Island") # 1 listing
+chelsea_staten_island_map <-
+  plot_listings_in_neighborhood("Chelsea, Staten Island")     # 0 listings
 # -> these are not significant Airbnb markets and are very distant from NYC proper
 # Investigating more in Google Maps, these are more suburban neighborhoods
 
@@ -539,13 +540,15 @@ neighborhood_map <- leaflet(neighborhoodsgeo) %>%
 # ================================================================================
 
 room_type_table <- listings %>% count(room_type)
-room_type_plot <- plot_pie(listings %>% select(room_type), "room_type", "Room Type")
+room_type_plot <-
+  plot_pie(listings %>% select(room_type), "room_type", "Room Type")
 
 listings <-
   listings %>% filter(room_type %in% c("Entire home/apt", "Private room"))
 
 # Also focus on specific property types
-property_type_table <- listings %>% count(property_type) %>% arrange(desc(n)) %>% head(10)
+property_type_table <-
+  listings %>% count(property_type) %>% arrange(desc(n)) %>% head(10)
 
 relevant_property_types <- c(
   "Apartment",
@@ -557,19 +560,17 @@ relevant_property_types <- c(
   "Serviced apartment"
 )
 
-listings <- listings %>% filter(
-  property_type %in% relevant_property_types
-)
+listings <- listings %>% filter(property_type %in% relevant_property_types)
 
 # Filter to only include properties which are not uniquely used
 # for travel but are often rented / used for long term housing
 
 # Plot monthly price per listing
 price_plot <- plot_hist(listings$price_double,
-          'Listing Prices',
-          'Price ($)',
-          'Frequency',
-          60)
+                        'Listing Prices',
+                        'Price ($)',
+                        'Frequency',
+                        60)
 monthly_price_plot <- plot_hist(
   listings$monthly_price_double,
   'Monthly Listing Prices',
@@ -583,43 +584,46 @@ MAX_MONTHLY_PRICE <- 12000
 
 
 # What variables correlate most strongly with price?
-listings_cor_plot <- plot_cor_matrix(listings, c(
-  "price_double",
-  "accommodates",
-  "beds",
-  "square_feet",
-  "number_of_reviews",
-  "number_of_reviews_ltm",
-  "reviews_per_month",
-  "review_scores_rating",
-  "review_scores_cleanliness",
-  "review_scores_communication",
-  "review_scores_value",
-  "review_scores_accuracy",
-  "review_scores_checkin",
-  "review_scores_location"
-))
+listings_cor_plot <- plot_cor_matrix(
+  listings,
+  c(
+    "price_double",
+    "accommodates",
+    "beds",
+    "square_feet",
+    "number_of_reviews",
+    "number_of_reviews_ltm",
+    "reviews_per_month",
+    "review_scores_rating",
+    "review_scores_cleanliness",
+    "review_scores_communication",
+    "review_scores_value",
+    "review_scores_accuracy",
+    "review_scores_checkin",
+    "review_scores_location"
+  )
+)
 
 # Digging into availability
 availability_plot <- plot_hist(listings$availability_365,
-          "365 Day Availability",
-          "Availability",
-          "Frequency")
+                               "365 Day Availability",
+                               "Availability",
+                               "Frequency")
 
 no_availability_table <- listings %>%
   filter(availability_365 == 0) %>%
   select(listing_url) %>%
   sample_n(10)
 
-accommodates_table <- listings %>% count(accommodates) 
+accommodates_table <- listings %>% count(accommodates)
 MAX_ACCOMMODATES = 14
 listings <- listings %>% filter(accommodates <= MAX_ACCOMMODATES)
 
 MAX_NUM_BEDS <- 8
 
 beds_price_plot <- ggplot(data = listings %>%
-         filter(beds <= MAX_NUM_BEDS) %>%
-         filter(price_double <= MAX_PRICE)) +
+                            filter(beds <= MAX_NUM_BEDS) %>%
+                            filter(price_double <= MAX_PRICE)) +
   geom_boxplot(aes(x = as.factor(beds), y = price_double, fill = beds)) +
   coord_flip() +
   ylab('Price ($)') +
@@ -641,22 +645,22 @@ no_reviews_table <- listings %>%
   select(id, description)
 
 num_reviews_plot <- plot_hist(listings$number_of_reviews,
-          'Number of Reviews',
-          'Count',
-          'Frequency')
+                              'Number of Reviews',
+                              'Count',
+                              'Frequency')
 
 # NOTE "ltm" means "last twelve months", "ntm" means "next twelve months"
 num_reviews_ltm_plot <- plot_hist(listings$number_of_reviews_ltm,
-          'Number of Reviews in Last Year',
-          'Count',
-          'Frequency')
- 
+                                  'Number of Reviews in Last Year',
+                                  'Count',
+                                  'Frequency')
+
 # First review date is a proxy for when these listings were created
 first_review_plot <- plot_hist(listings$first_review_date,
-          'First Review Dates',
-          'Date',
-          'Frequency',
-          60)
+                               'First Review Dates',
+                               'Date',
+                               'Frequency',
+                               60)
 
 plot_review_dates <- function(data) {
   ggplot(data) +
@@ -696,7 +700,8 @@ review_dates_plot <- plot_review_dates(listings)
 # Looking at host data, specifically
 # ================================================================================
 
-multihost_date_plot <- ggplot(listings[!is.na(listings$host_has_multi), ]) +
+multihost_date_plot <-
+  ggplot(listings[!is.na(listings$host_has_multi),]) +
   geom_density(
     show.legend = TRUE,
     aes(x = first_review_date, colour = host_has_multi, fill = host_has_multi),
@@ -747,7 +752,7 @@ sum(is.na(hosts$host_listings_count)) # -> 5
 sum(hosts$host_listings_count == 0, na.rm = TRUE)
 # 3974 hosts have no listings...maybe there is some sort of federated system
 
-hosts_with_listings <- hosts[hosts$host_listings_count > 0, ]
+hosts_with_listings <- hosts[hosts$host_listings_count > 0,]
 
 hosts_listings_count_plot <- qplot(
   hosts_with_listings$host_listings_count,
@@ -783,11 +788,13 @@ multihost_price_plot <- ggplot(data = listings) +
 # Spatial analysis
 # ================================================================================
 
-listings_neighborhood_group_table <- listings %>% count(neighborhood_group_cleansed)
+listings_neighborhood_group_table <-
+  listings %>% count(neighborhood_group_cleansed)
 listings_neighborhood_group_plot <- plot_pie(listings,
-         "neighborhood_group_cleansed",
-         "Neighborhood Group")
-listings_neighborhood_table <- listings %>% count(neighborhood_cleansed) %>% arrange(desc(n)) %>% head(10)
+                                             "neighborhood_group_cleansed",
+                                             "Neighborhood Group")
+listings_neighborhood_table <-
+  listings %>% count(neighborhood_cleansed) %>% arrange(desc(n)) %>% head(10)
 
 # ================================================================================
 # NYC housing data
@@ -802,7 +809,66 @@ housing_idx_to_neighborhood <-
   sp::over(housing_with_coords, neighborhoodsgeo)
 housing_idx_to_neighborhood %>% filter(!is.na(neighborhood)) %>% count(neighborhood)
 
-# TODO keep copying things
+# ================================================================================
+# Synthesizing Data
+# ================================================================================
+
+plot_neighborhoods <- function (data, col, title) {
+  pal <- colorNumeric("viridis", NULL)
+  filtered_data <- data[!is.na(data[[col]]), ]
+  
+  return(
+    leaflet(filtered_data) %>%
+      addMap() %>%
+      addPolygons(
+        stroke = FALSE,
+        smoothFactor = 0.3,
+        fillOpacity = 0.5,
+        fillColor = ~ pal(filtered_data[[col]]),
+        popup = ~ paste0(
+          "<b>",
+          neighborhood,
+          "</b>",
+          "<table><tbody>",
+          "<tr><td>Avg. monthly income</td><td>$",
+          monthlyIncome,
+          "</td></tr>",
+          "<tr><td>Avg. nightly price</td><td>$",
+          pricePerNight,
+          "</td></tr>",
+          "<tr><td>Est. # listings</td><td>",
+          numListings,
+          "</td></tr>",
+          "<tr><td>Est. # highly available</td><td>",
+          numHighAvailability,
+          "</td></tr>",
+          "<tr><td>Est. occupancy rate</td><td>",
+          occupancy,
+          "</td></tr>",
+          "<tr><td>Avg nights occupied/year</td><td>",
+          nightsPerYear,
+          "</td></tr>",
+          "<tr><td><hr /></td><td><hr /></td></tr>",
+          "<tr><td>Rent inventory</td><td>",
+          ifelse(is.na(rent_inventory), "unknown", rent_inventory),
+          "</td></tr>",
+          "<tr><td>Avg. rent asking</td><td>",
+          ifelse(is.na(rent_asking), "unknown", paste0("$", rent_asking)),
+          "</td></tr>",
+          "</tbody></table>"
+        )
+      ) %>%
+      addLegend(
+        pal = pal,
+        values = ~ filtered_data[[col]],
+        opacity = 1.0,
+        title = title
+      )
+  )
+}
+
+neighborhood_cor_plot <- plot_cor_matrix(
+  neighborhoodsgeo@data, c("monthlyIncome", "rent_inventory", "rent_asking"))
 
 # ================================================================================
 # Shiny App
@@ -814,37 +880,69 @@ server <- function(input, output) {
     room_type_plot
   })
   output$property_type_table <- renderTable(property_type_table)
-  output$price_plot <- renderPlot({ price_plot })
-  output$monthly_price_plot <- renderPlot({ monthly_price_plot })
-
+  output$price_plot <- renderPlot({
+    price_plot
+  })
+  output$monthly_price_plot <- renderPlot({
+    monthly_price_plot
+  })
+  
   output$bay_terrace_staten_island_map <- renderLeaflet({
     bay_terrace_staten_island_map
   })
   output$chelsea_staten_island_map <- renderLeaflet({
     chelsea_staten_island_map
   })
-
-  output$listings_cor_plot <- renderPlot({ listings_cor_plot })
-  output$availability_plot <- renderPlot({ availability_plot })
+  
+  output$listings_cor_plot <- renderPlot({
+    listings_cor_plot
+  })
+  output$availability_plot <- renderPlot({
+    availability_plot
+  })
   output$no_availability_table <- renderTable(no_availability_table)
   output$accommodates_table <- renderTable(accommodates_table)
-  output$beds_price_plot <- renderPlot({ beds_price_plot })
+  output$beds_price_plot <- renderPlot({
+    beds_price_plot
+  })
   output$no_reviews_table <- renderTable(no_reviews_table)
-
-  output$num_reviews_plot <- renderPlot({ num_reviews_plot })
-  output$num_reviews_ltm_plot <- renderPlot({ num_reviews_ltm_plot })
-  output$first_review_plot <- renderPlot({ first_review_plot })
-  output$review_dates_plot <- renderPlot({ review_dates_plot })
-  output$multihost_date_plot <- renderPlot({ multihost_date_plot })
-
+  
+  output$num_reviews_plot <- renderPlot({
+    num_reviews_plot
+  })
+  output$num_reviews_ltm_plot <-
+    renderPlot({
+      num_reviews_ltm_plot
+    })
+  output$first_review_plot <- renderPlot({
+    first_review_plot
+  })
+  output$review_dates_plot <- renderPlot({
+    review_dates_plot
+  })
+  output$multihost_date_plot <- renderPlot({
+    multihost_date_plot
+  })
+  
   output$hosts_table <- renderTable(hosts_table)
-  output$hosts_listings_count_plot <- renderPlot({ hosts_listings_count_plot })
-  output$multihost_price_plot <- renderPlot({ multihost_price_plot })
-
-  output$listings_neighborhood_group_table <- renderTable(listings_neighborhood_group_table)
-  output$listings_neighborhood_group_plot <- renderPlot({ listings_neighborhood_group_plot })
-  output$listings_neighborhood_table <- renderTable(listings_neighborhood_table)
-
+  output$hosts_listings_count_plot <-
+    renderPlot({
+      hosts_listings_count_plot
+    })
+  output$multihost_price_plot <-
+    renderPlot({
+      multihost_price_plot
+    })
+  
+  output$listings_neighborhood_group_table <-
+    renderTable(listings_neighborhood_group_table)
+  output$listings_neighborhood_group_plot <-
+    renderPlot({
+      listings_neighborhood_group_plot
+    })
+  output$listings_neighborhood_table <-
+    renderTable(listings_neighborhood_table)
+  
   output$neighborhood_group_map <-
     renderLeaflet({
       neighborhood_group_map
@@ -857,23 +955,24 @@ server <- function(input, output) {
     renderPlot({
       housing_no_latitude_plot
     })
-
-  output$neighborhood_group_data <- DT::renderDataTable(DT::datatable({
-    neighborhood_group_data %>%
-      select(
-        c(
-          "value",
-          "numListings",
-          "entireHomePercent",
-          "privateRoomPercent",
-          "pricePerNight",
-          "nightsPerYear",
-          "monthlyIncome",
-          "numHighAvailability",
-          "avgAvailability365"
+  
+  output$neighborhood_group_data <-
+    DT::renderDataTable(DT::datatable({
+      neighborhood_group_data %>%
+        select(
+          c(
+            "value",
+            "numListings",
+            "entireHomePercent",
+            "privateRoomPercent",
+            "pricePerNight",
+            "nightsPerYear",
+            "monthlyIncome",
+            "numHighAvailability",
+            "avgAvailability365"
+          )
         )
-      )
-  }))
+    }))
   
   output$rent_data <- DT::renderDataTable(DT::datatable({
     neighborhoodsgeo@data %>%
@@ -888,7 +987,7 @@ server <- function(input, output) {
         )
       )
   }))
-
+  
   output$housing_data <- DT::renderDataTable(DT::datatable({
     housing %>%
       select(
@@ -906,6 +1005,18 @@ server <- function(input, output) {
         )
       )
   }))
+  
+  agg_col_to_tile <- c(
+    "monthlyIncome" = "Avg. Airbnb Income/Month",
+    "rent_inventory" = "StreetEasy Rent Inventory",
+    "rent_asking" = "StreetEasy Avg. Rent Asking"
+  )
+  
+  output$agg_map <- renderLeaflet({
+    plot_neighborhoods(neighborhoodsgeo, input$agg_col, agg_col_to_tile[[input$agg_col]])
+  })
+
+  output$neighborhood_cor_plot <- renderPlot({ neighborhood_cor_plot })
 }
 
 container <- function (...)
@@ -913,6 +1024,9 @@ container <- function (...)
 
 ui <- shinyUI(fluidPage(
   theme = shinytheme("flatly"),
+  tags$head(
+    tags$link(rel = "stylesheet", type = "text/css", href = "style.css")
+  ),
   navbarPage(
     "Airbnb and Rentals in NYC",
     tabPanel(
@@ -934,8 +1048,13 @@ ui <- shinyUI(fluidPage(
           market in NYC and of properties which could be more traditional rentals. This analysis is explained in
           depth on the next page."
         ),
-        p('There are ', raw_num_listings, ' unfiltered listings in the NYC dataset. ',
-          'I filtered the listings down to ', listings %>% nrow(), ' more relevant listings.'
+        p(
+          'There are ',
+          raw_num_listings,
+          ' unfiltered listings in the NYC dataset. ',
+          'I filtered the listings down to ',
+          listings %>% nrow(),
+          ' more relevant listings.'
         ),
         p(
           a(href = "http://insideairbnb.com/get-the-data.html", "Source")
@@ -949,20 +1068,23 @@ ui <- shinyUI(fluidPage(
           normal listing data. One advantage of the aggregated data is they have a model for tracking
           and predicting how often Airbnbs are booked over time and can use this to predict how much
           revenue a host makes per month. This makes it easier to compare Airbnb listings with more
-          traditional rental listings in the city."),
+          traditional rental listings in the city."
+        ),
         p(
           "To access this data, I wrote a simple JavaScript which runs in the browser console to scrape
-          this data from the website and write it to a CSV string."),
+          this data from the website and write it to a CSV string."
+        ),
         p(a(href = "https://insideairbnb.com/new-york-city/", "Source"))
       ),
       DT::dataTableOutput("neighborhood_group_data"),
-
+      
       container(
         p(
           "The scraped data was missing two neighborhoods, however, as show in the plots below, these
-          neighborhoods have very low Airbnb activity and are also not large rental markets:")
+          neighborhoods have very low Airbnb activity and are also not large rental markets:"
+        )
       ),
-
+      
       fluidRow(column(
         6,
         h4("Bay Terrace, Staten Island"),
@@ -973,9 +1095,9 @@ ui <- shinyUI(fluidPage(
         h4("Chelsea, Staten Island"),
         leafletOutput("chelsea_staten_island_map")
       )),
-
+      
       br(),
-        
+      
       container(
         h3("NYC Geospatial Data"),
         p(
@@ -1020,9 +1142,9 @@ ui <- shinyUI(fluidPage(
         )
       ),
       DT::dataTableOutput("rent_data"),
-
+      
       br(),
-
+      
       container(
         h3("Housing NYC Projects Data"),
         p(
@@ -1056,10 +1178,14 @@ ui <- shinyUI(fluidPage(
       ),
       DT::dataTableOutput("housing_data")
     ),
-
-    tabPanel("Filtering Listings",
+    
+    tabPanel(
+      "Filtering Listings",
       container(
         h1("Filtering Listings"),
+        
+        br(),
+        
         p(
           "Through this section of analysis I aim to answer the question of what
           subset of the listings could make valid rental properties. Futher, I
@@ -1069,83 +1195,115 @@ ui <- shinyUI(fluidPage(
         ),
         br(),
         p("First, we consider the types of listings:"),
-        fluidRow(
-          column(6, tableOutput("room_type_table")),
-          column(6, plotOutput("room_type_plot"))
-        ),
+        fluidRow(column(6, tableOutput("room_type_table")),
+                 column(6, plotOutput("room_type_plot"))),
         br(),
         p("Next, we consider the property type that the listing is on:"),
         tableOutput("property_type_table"),
-        p(paste0("For listings to be most representative of traditional rentals, I honed in on: ", paste(
-          relevant_property_types, collapse=", "
-        ), ".")),
+        p(
+          paste0(
+            "For listings to be most representative of traditional rentals, I honed in on: ",
+            paste(relevant_property_types, collapse = ", "),
+            "."
+          )
+        ),
         br(),
-        p("For this subset of listings, we consider their pricing distribution
+        p(
+          "For this subset of listings, we consider their pricing distribution
           both nightly and monthly (note that not all listings have a monthly
-          price, this is up to hosts if they want a unique monthly rate):")
+          price, this is up to hosts if they want a unique monthly rate):"
+        )
       ),
-
+      
       plotOutput("price_plot"),
       plotOutput("monthly_price_plot"),
-
-      container(
-        p(paste0(
+      
+      container(p(
+        paste0(
           "From these histograms, I removed expensive outliers which likely could
           not serve as rental properties. Namely I enforced a max price of $",
-          MAX_PRICE, " and a max monthly price of $", MAX_MONTHLY_PRICE, "."))
-      ),
+          MAX_PRICE,
+          " and a max monthly price of $",
+          MAX_MONTHLY_PRICE,
+          "."
+        )
+      )),
       br(),
       container(
-        p("For context, here are the correlation between numeric columns in the data:"),
+        p(
+          "For context, here are the correlation between numeric columns in the data:"
+        ),
         plotOutput("listings_cor_plot", height = "600px"),
         br(),
         p(
           "Nothing correlates particularly well with price except maybe square feet, number of beds,
           and the number of people the listing accommodates. That is, ratings don't correlate
-          particularly strongly with listing price, likely because hosts have a lot of agency over 
-          the price that they list at (though Airbnb will recommend certain prices)."),
+          particularly strongly with listing price, likely because hosts have a lot of agency over
+          the price that they list at (though Airbnb will recommend certain prices)."
+        ),
         br(),
-        p("Next, I looked into the availability of listings over the next year:")
+        p(
+          "Next, I looked into the availability of listings over the next year:"
+        )
       ),
       plotOutput("availability_plot"),
       container(
-        p("Interestingly, many of the listings have 0 availability over the next year. Looking into
+        p(
+          "Interestingly, many of the listings have 0 availability over the next year. Looking into
           samples of the data, however, these appear to be legitimate listings. Perhaps there are
           just different protocols for booking these listings or they have already been booked by
-          businesses or long term renters:"),
+          businesses or long term renters:"
+        ),
         tableOutput("no_availability_table"),
-        p("I also looked at data from January (before the Coronavirus was a widespread issue in the
-          US, and this same trend held, thus the pandemic is not a cause for this."),
-
+        p(
+          "I also looked at data from January (before the Coronavirus was a widespread issue in the
+          US, and this same trend held, thus the pandemic is not a cause for this."
+        ),
+        
         br(),
-
+        
         p(
           "Another relevant feature in the data is how many people a listing can accommodate. This
           is not the most trustworthy data point since hosts select it themselves, though it does
           correlate with actual size. I wanted to filter out listings which were larger than a
-          traditional rental and are instead intended for large gatherings:"),
+          traditional rental and are instead intended for large gatherings:"
+        ),
         tableOutput("accommodates_table"),
-        p(paste0(
-          "Looking at a sample of listings which accommodate many people, the majority of these are
+        p(
+          paste0(
+            "Looking at a sample of listings which accommodate many people, the majority of these are
           not proper homes or apartments and therefore would likely not be rentals. A threshold of ",
-          MAX_ACCOMMODATES, " seems to be the best line between large homes and effectively venues.")),
-        p(paste0("Under similar analysis, I put a threshold on number of beds in the listing to be ",
-          MAX_NUM_BEDS, ".")),
-        p("Under these constraints, we have a better picture of pricing of listings which fall within
-          rental-property size:")
+            MAX_ACCOMMODATES,
+            " seems to be the best line between large homes and effectively venues."
+          )
+        ),
+        p(
+          paste0(
+            "Under similar analysis, I put a threshold on number of beds in the listing to be ",
+            MAX_NUM_BEDS,
+            "."
+          )
+        ),
+        p(
+          "Under these constraints, we have a better picture of pricing of listings which fall within
+          rental-property size:"
+        )
       ),
-
+      
       plotOutput("beds_price_plot"),
-
+      
       container(
         p(
           "Sampling the data, we see that beds marked as NA or 0 tend to be normal bedroom listings.
-          Most likely, the hosts just did not provide this number in these cases."),
-
+          Most likely, the hosts just did not provide this number in these cases."
+        ),
+        
         br(),
-
-        p("Next, I wanted to gauge which listings are authentic and active as based
-          on their review data. To begin, I dove into listings with no reviews:"),
+        
+        p(
+          "Next, I wanted to gauge which listings are authentic and active as based
+          on their review data. To begin, I dove into listings with no reviews:"
+        ),
         tableOutput("no_reviews_table"),
         p(
           "These seem to be real enough to potentially not be duplicates or fake.
@@ -1154,56 +1312,153 @@ ui <- shinyUI(fluidPage(
         ),
         p("For listings which do have reviews, the distributions look like:")
       ),
-
-      fluidRow(
-        column(6, plotOutput("num_reviews_plot")),
-        column(6, plotOutput("num_reviews_ltm_plot"))
-      ),
+      
+      fluidRow(column(6, plotOutput("num_reviews_plot")),
+               column(6, plotOutput(
+                 "num_reviews_ltm_plot"
+               ))),
       plotOutput("first_review_plot"),
-
+      
       container(
         p(
           "To remove some inactive listings, I filtered out listings which have been revied but
-          were last reviewed more than 1 year ago. This gives us the following distribution:"),
+          were last reviewed more than 1 year ago. This gives us the following distribution:"
+        ),
         plotOutput("review_dates_plot"),
         p(
           "Note we are using first review date as a proxy for when the listing was created. The
           vast majority are still quite active into the start of 2020. We also see that the last
           reviews curve is far more volatile than the first reviews curve indicating some notion
-          of seasonality."),
-        p("Having pored over the columns in the data, we now have listings which are certainly
-          more representative of potential rental listings than the original raw dataset.")
+          of seasonality."
+        ),
+        p(
+          "Having pored over the columns in the data, we now have listings which are certainly
+          more representative of potential rental listings than the original raw dataset."
+        ),
+
+        hr(),
+        
+        p(
+          'The filtered listings are distributed throughout the city as follows:'
+        ),
+        fluidRow(column(
+          6, tableOutput("listings_neighborhood_group_table")
+        ),
+        column(
+          6, plotOutput("listings_neighborhood_group_plot")
+        )),
+        tableOutput("listings_neighborhood_table")
       )
     ),
-
-    tabPanel("Airbnb Hosts",
+    
+    tabPanel(
+      "Airbnb Hosts",
       container(
         h1("Airbnb Hosts"),
-        plotOutput("multihost_date_plot"),
+        
+        br(),
+        
+        p(
+          "Research in this space often seeks to draw a line between commercial hosts and traditional
+          hosts based on the scale and frequency of their operations. In a related thread to this, I
+          wanted to better understand how different hosts take advantage of the platform, potentially
+          to the disadvantage of NYC residents."
+        ),
+        
+        br(),
+        
+        p(
+          "First, consider the creation of listings by hosts where this is their only listing to
+          listings by hosts with mutliple listings. As in our earlier analysis, we use first
+          review date as a proxy for when the listing was created:"
+        )
+      ),
+      
+      plotOutput("multihost_date_plot"),
+      
+      br(),
+      
+      container(
+        p('These are the hosts with the most listings in the city:'),
         tableOutput("hosts_table"),
-        p("We see a mix of agencies and people with oddly simple names...basically agencies under cover."),
+        p(
+          "We see a mix of agencies and people with oddly simple names...basically agencies under cover.
+          Here is the distribution histogram:"
+        ),
         plotOutput("hosts_listings_count_plot"),
         p(
           "The vast majority of hosts own only a handlful of rentals. Those who own on the order of hundreds
           are largely businesses, sometimes with actual business names and sometimes with host names which
-          under the hood are enterprises."),
+          under the hood are enterprises."
+        ),
+        br(),
         plotOutput("multihost_price_plot"),
-        p("There is no clear statistical trend in pricing for hosts with mutliple listings versus hosts
-          with a single listing."),
-
-        tableOutput("listings_neighborhood_group_table"),
-        plotOutput("listings_neighborhood_group_plot"),
-        tableOutput("listings_neighborhood_table"),
-
-        p("TODO add text between plots")
+        p(
+          "There is no clear statistical trend in pricing for hosts with mutliple listings versus hosts
+          with a single listing."
+        ),
+        p(
+          "From these plots alone, it's hard to say if multi-hosts are having an
+          outsized impact on a per listing basis, though in aggregate they clearly
+          have a large effect."
+        )
       )
     ),
-
-    tabPanel("Housing and Listings", headerPanel("TODO")),
-    tabPanel("Aggregations", headerPanel("TODO")),
-    tabPanel("Policy Recommendations", headerPanel("TODO"))
+    
+    tabPanel(
+      "Housing and Listings",
+      h1("Housing and Listings"),
+      
+      br(),
+      
+      p("TODO")
+    ),
+    tabPanel(
+      "Neighborhoods",
+      h1("Neighborhoods"),
+      
+      br(),
+      
+      fluidRow(column(2, radioButtons(
+        "agg_col",
+        "Metric:",
+        c(
+          "Avg. Airbnb Income/Month" = "monthlyIncome",
+          "StreetEasy Rent Inventory" = "rent_inventory",
+          "StreetEasy Avg. Rent Asking" = "rent_asking"
+        )
+      )),
+      column(
+        10, leafletOutput("agg_map", height = "600px")
+      )),
+      br(),
+      container(
+        h3("Correlations"),
+        p(
+          "These variables are certainly interrelated: there are more rental listings
+          in neighborhoods with higher rental prices. Airbnb hosts make more money off
+          of their lists (on average) in neighborhoods with higher rent."),
+        p(
+          "The cost of rent is a proxy for how well off a neighborhood is. We see in
+          the Housing and Listings tab that neighborhoods with more municipal
+          investment in affordable housing have fewer Airbnb listings. Airbnb listings
+          lower supply for rentals. Thus, Airbnb perhaps is an accelerant for changes
+          in housing markets in neighborhoods."),
+        fluidRow(
+          column(6, plotOutput("neighborhood_cor_plot"))
+        )
+      )
+    ),
+    tabPanel(
+      "Policy Recommendations",
+      h1("Policy Recommendations"),
+      
+      br(),
+      
+      p("TODO")
+    )
   ),
-
+  
   div(
     p(
       "Created by ",

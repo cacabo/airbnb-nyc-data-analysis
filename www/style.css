@@ -1,0 +1,12 @@
+nav.navbar.navbar-default.navbar-static-top {
+  width: 100vw;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1300;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+body {
+  padding-top: 6.5rem;
+}
