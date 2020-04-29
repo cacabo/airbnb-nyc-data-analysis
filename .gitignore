@@ -13,3 +13,4 @@ rsconnect/
 latex/**/*
 !latex/writeup.tex
 !latex/*.png
+!latex/*.pdf
