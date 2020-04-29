@@ -1255,8 +1255,8 @@ plot_data_in_neighborhood("Upper East Side")
 plot_data_in_neighborhood_group("Manhattan")
 
 # Plot average income per Airbnb listing per neighborhood
-pal <- colorNumeric("viridis", NULL)
 plot_neighborhoods <- function (data, col, title) {
+  pal <- colorNumeric("viridis", NULL)
   filtered_data <- data[!is.na(data[[col]]),]
   
   leaflet(filtered_data) %>%

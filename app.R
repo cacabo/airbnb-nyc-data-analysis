@@ -96,7 +96,8 @@ plot_hist <- function (data, title, xlabel, ylabel, bins = 60) {
   qplot(data,
         geom = "histogram",
         bins = bins,
-        fill = I(GREEN),) +
+        fill = I(GREEN),
+  ) +
     ggtitle(title) +
     xlab(xlabel) +
     ylab(ylabel)
@@ -259,7 +260,7 @@ plot_data <-
 
 get_neighborhood_geo <- function(n) {
   neighborhood_geo <-
-    neighborhoodsgeo[neighborhoodsgeo$neighborhood == n, ]
+    neighborhoodsgeo[neighborhoodsgeo$neighborhood == n,]
   if (nrow(neighborhood_geo) == 0) {
     warning("Unknown neighborhood parameter")
     return()
@@ -269,7 +270,7 @@ get_neighborhood_geo <- function(n) {
 
 get_neighborhood_group_geo <- function(g) {
   geo <-
-    neighborhoodsgeo[neighborhoodsgeo$neighborhood_group == g, ]
+    neighborhoodsgeo[neighborhoodsgeo$neighborhood_group == g,]
   if (nrow(geo) == 0) {
     warning("Unknown neighborhood group parameter")
     return()
@@ -313,7 +314,7 @@ get_housing_in_neighborhood_group <- function(g) {
       housing_idx_to_neighborhood$neighborhood_group == g
   )
   neighborhood_group_housing <-
-    housing_with_coords[neighborhood_group_housing_mask,]
+    housing_with_coords[neighborhood_group_housing_mask, ]
   return(neighborhood_group_housing)
 }
 
@@ -323,7 +324,7 @@ get_housing_in_neighborhood <- function(n) {
       housing_idx_to_neighborhood$neighborhood == n
   )
   neighborhood_housing <-
-    housing_with_coords[neighborhood_housing_mask,]
+    housing_with_coords[neighborhood_housing_mask, ]
   return(neighborhood_housing)
 }
 
@@ -450,9 +451,9 @@ neighborhoods <- neighborhoods %>%
 # Subset data based on geographic scope (whole city vs. borough vs. neighborhood)
 neighborhood_group_data <-
   nyc_inside_airbnb_data %>% filter(value %in% neighborhoods$neighborhood_group)
-neighborhood_data       <-
+neighborhood_data <-
   nyc_inside_airbnb_data %>% filter(value %in% neighborhoods$neighborhood)
-city_data               <-
+city_data <-
   nyc_inside_airbnb_data %>% filter(value == 'New York City')
 
 neighborhoods %>% filter(!(neighborhood %in% neighborhood_data$value)) %>%
@@ -560,7 +561,8 @@ relevant_property_types <- c(
   "Serviced apartment"
 )
 
-listings <- listings %>% filter(property_type %in% relevant_property_types)
+listings <-
+  listings %>% filter(property_type %in% relevant_property_types)
 
 # Filter to only include properties which are not uniquely used
 # for travel but are often rented / used for long term housing
@@ -701,7 +703,7 @@ review_dates_plot <- plot_review_dates(listings)
 # ================================================================================
 
 multihost_date_plot <-
-  ggplot(listings[!is.na(listings$host_has_multi),]) +
+  ggplot(listings[!is.na(listings$host_has_multi), ]) +
   geom_density(
     show.legend = TRUE,
     aes(x = first_review_date, colour = host_has_multi, fill = host_has_multi),
@@ -752,7 +754,7 @@ sum(is.na(hosts$host_listings_count)) # -> 5
 sum(hosts$host_listings_count == 0, na.rm = TRUE)
 # 3974 hosts have no listings...maybe there is some sort of federated system
 
-hosts_with_listings <- hosts[hosts$host_listings_count > 0,]
+hosts_with_listings <- hosts[hosts$host_listings_count > 0, ]
 
 hosts_listings_count_plot <- qplot(
   hosts_with_listings$host_listings_count,
@@ -815,7 +817,7 @@ housing_idx_to_neighborhood %>% filter(!is.na(neighborhood)) %>% count(neighborh
 
 plot_neighborhoods <- function (data, col, title) {
   pal <- colorNumeric("viridis", NULL)
-  filtered_data <- data[!is.na(data[[col]]), ]
+  filtered_data <- data[!is.na(data[[col]]),]
   
   return(
     leaflet(filtered_data) %>%
@@ -867,8 +869,11 @@ plot_neighborhoods <- function (data, col, title) {
   )
 }
 
-neighborhood_cor_plot <- plot_cor_matrix(
-  neighborhoodsgeo@data, c("monthlyIncome", "rent_inventory", "rent_asking"))
+neighborhood_cor_plot <- plot_cor_matrix(neighborhoodsgeo@data,
+                                         c("monthlyIncome", "rent_inventory", "rent_asking"))
+
+neighborhood_groups_list <- unique(neighborhoods$neighborhood_group)
+neighborhoods_list <- unique(neighborhoods$neighborhood)
 
 # ================================================================================
 # Shiny App
@@ -1015,8 +1020,78 @@ server <- function(input, output) {
   output$agg_map <- renderLeaflet({
     plot_neighborhoods(neighborhoodsgeo, input$agg_col, agg_col_to_tile[[input$agg_col]])
   })
-
-  output$neighborhood_cor_plot <- renderPlot({ neighborhood_cor_plot })
+  
+  output$neighborhood_cor_plot <-
+    renderPlot({
+      neighborhood_cor_plot
+    })
+  
+  map_shapes <- reactive({
+    map_scope <- input$map_scope
+    
+    if (map_scope == "All") {
+      return(neighborhoodsgeo)
+    } else if (map_scope %in% neighborhood_groups_list) {
+      return(get_neighborhood_group_geo(map_scope))
+    } else {
+      return(get_neighborhood_geo(map_scope))
+    }
+  })
+  
+  map_listings <- reactive({
+    map_scope <- input$map_scope
+    map_data <- input$map_data
+    map_listings <- "listings" %in% map_data
+    
+    if (!map_listings) {
+      return (NULL)
+    }
+    
+    if (map_scope == "All") {
+      return(listings)
+    } else if (map_scope %in% neighborhood_groups_list) {
+      return(get_listings_in_neighborhood_group(map_scope))
+    } else {
+      return(get_listings_in_neighborhood(map_scope))
+    }
+  })
+  
+  map_housing <- reactive({
+    map_scope <- input$map_scope
+    map_data <- input$map_data
+    map_housing <- "housing" %in% map_data
+    
+    if (!map_housing) {
+      return (NULL)
+    }
+    
+    if (map_scope == "All") {
+      return(housing)
+    } else if (map_scope %in% neighborhood_groups_list) {
+      return(get_housing_in_neighborhood_group(map_scope))
+    } else {
+      return(get_housing_in_neighborhood(map_scope))
+    }
+  })
+  
+  output$num_listings <-
+    renderText({
+      paste0("# Airbnb listings: ", nrow(map_listings()))
+    })
+  output$num_housing <-
+    renderText({
+      paste0("# Housing projects: ", nrow(map_housing()))
+    })
+  output$num_shapes <-
+    renderText({
+      paste0("# Neighborhoods: ", nrow((map_shapes())@data))
+    })
+  
+  output$housing_and_listings_plot <- renderLeaflet({
+    plot_data(listings = map_listings(),
+              housing = map_housing(),
+              shapes = map_shapes())
+  })
 }
 
 container <- function (...)
@@ -1335,7 +1410,7 @@ ui <- shinyUI(fluidPage(
           "Having pored over the columns in the data, we now have listings which are certainly
           more representative of potential rental listings than the original raw dataset."
         ),
-
+        
         hr(),
         
         p(
@@ -1411,7 +1486,34 @@ ui <- shinyUI(fluidPage(
       
       br(),
       
-      p("TODO")
+      fluidRow(column(
+        2,
+        div(
+          selectInput(
+            "map_scope",
+            "Area to map",
+            c(
+              "All",
+              as.character(neighborhood_groups_list),
+              as.character(neighborhoods_list)
+            )
+          ),
+          checkboxGroupInput(
+            "map_data",
+            "Data to map",
+            c("Airbnb Listings" = "listings",
+              "Housing Projects" = "housing")
+          ),
+          hr(),
+          textOutput("num_listings"),
+          textOutput("num_housing"),
+          textOutput("num_shapes")
+        )
+      ),
+      column(
+        10,
+        leafletOutput("housing_and_listings_plot", height = "672px")
+      ))
     ),
     tabPanel(
       "Neighborhoods",
@@ -1437,25 +1539,123 @@ ui <- shinyUI(fluidPage(
         p(
           "These variables are certainly interrelated: there are more rental listings
           in neighborhoods with higher rental prices. Airbnb hosts make more money off
-          of their lists (on average) in neighborhoods with higher rent."),
+          of their lists (on average) in neighborhoods with higher rent."
+        ),
         p(
           "The cost of rent is a proxy for how well off a neighborhood is. We see in
           the Housing and Listings tab that neighborhoods with more municipal
           investment in affordable housing have fewer Airbnb listings. Airbnb listings
           lower supply for rentals. Thus, Airbnb perhaps is an accelerant for changes
-          in housing markets in neighborhoods."),
-        fluidRow(
-          column(6, plotOutput("neighborhood_cor_plot"))
-        )
+          in housing markets in neighborhoods."
+        ),
+        fluidRow(column(6, plotOutput(
+          "neighborhood_cor_plot"
+        )))
       )
     ),
     tabPanel(
       "Policy Recommendations",
-      h1("Policy Recommendations"),
-      
-      br(),
-      
-      p("TODO")
+      container(
+        h1("Policy Recommendations"),
+        
+        br(),
+        
+        h3("Conclusions"),
+        
+        p("From our analysis of the data, we learned a few things:"),
+        tags$ol(
+          tags$li(
+            "There is an enormous variety to the listings on Airbnb. Parsing through the noise of which listings
+            are active, where they are located, how large they are, and other properties is difficult, let alone
+            forecasting a host's expected revenues."
+          ),
+          tags$li(
+            "Airbnb listings are more expensive and more common in neighborhoods with higher rental prices. The
+            causal link is hard to draw, but increasing rent prices and Airbnb concentration can have large
+            impacts on neighborhoods and communities. ",
+            a(href = "http://www.hcc-nyc.org/documents/ShortchangingNYC2016FINALprotected_000.pdf",
+              "Research"),
+            " has found vacancy rates for cheaper housing are far lower in NYC, making it harder for
+            lower income residents to access rental properties. Our analysis confirms this trend."
+            
+          ),
+          tags$li(
+            "Airbnb listings and Housing NYC Project developments tend to be in different locations in the city."
+          ),
+          tags$li(
+            "Airbnb listings are just as likely to be operated by pseudo-commercial hosts with mutliple
+            listings as they are a host with a single listing."
+          )
+        ),
+        
+        br(),
+        
+        h3("Next Steps"),
+        
+        p(
+          "NYC has instituted ",
+          a(href = "https://en.wikipedia.org/wiki/Rent_control_in_New_York", "rent control"),
+          "widely across the city. One issue with rent control is that it ",
+          a(href = "https://www.youtube.com/watch?v=oJvTTGOHFkU",
+            "fails to align incentives between landlords and renters"),
+          " leading to poor service and degrading housing conditions."
+          
+        ),
+        p(
+          "Alternatively, cooperatives can be a powerful mechanism for keeping rent low in certain localities while
+          aligning incentives between ownership groups and those living on the property. We need stronger, more
+          deliberate partnerships between municipal governments and these community-based organizations to
+          redistribute earnings and wellbeing more directly"
+        ),
+        p(
+          "Airbnbs further restrict housing supply. If all Airbnb's in our dataset became rental properties, the
+          vacancy rate in NYC across the board would be at a more stable level. However people are listing their
+          properties on Airbnb for a reason, be it financial, professional, or social. Instead of NYC limiting the
+          number of listings and interfering with market dynamics, I think it would better align incentives to
+          have Airbnb hosts to register with the city and pay a tax on all earnings which could be funnelled into
+          growing cooperatives and land trusts. New Jersey City has ",
+          a(href = "https://therealdeal.com/2015/10/12/jersey-city-mayor-wants-to-legalize-airbnb/", "such a tax in the works.")
+        )
+        ,
+        p(
+          "Such a strategy would give the city and organizations the flexibility to invest in neighborhoods they
+          think are the most in need for better low cost housing options and will make regulations easy to enforce
+          across the board compared to complex licensing and permit agreements."
+        ),
+        
+        br(),
+        
+        h3("Further Reading"),
+        
+        tags$ul(
+          tags$li(
+            a(href = "https://comptroller.nyc.gov/wp-content/uploads/documents/AirBnB_050318.pdf",
+              "The Impact of Airbnb on NYC Rents")
+          ),
+          tags$li(
+            a(href = "https://www.bloomberg.com/news/articles/2019-05-23/meet-murray-cox-airbnb-s-public-enemy-no-1-in-new-york",
+              "Meet Murray Cox, The Man Trying to Take Down Airbnb")
+          ),
+          tags$li(
+            a(
+              href = "https://fivethirtyeight.com/features/airbnb-probably-isnt-driving-rents-up-much-at-least-not-yet/",
+              "Airbnb Probably Isn’t Driving Rents Up Much, At Least Not Yet"
+            )
+          ),
+          tags$li(
+            a(
+              href = "https://furmancenter.org/files/NYUFurmanCenter_2017_National_Rental_Housing_Landscape_04OCT2017.pdf",
+              "2017 National Rental Housing Landscape Renting in the Nation’s Largest Metros"
+            )
+          ),
+          tags$li(
+            a(
+              href = "http://www.hcc-nyc.org/documents/ShortchangingNYC2016FINALprotected_000.pdf",
+              "Short Changing New York City, The impact of Airbnb on NYC's housing market"
+            )
+          )
+        )
+      )
     )
   ),
   
@@ -1472,6 +1672,3 @@ ui <- shinyUI(fluidPage(
 ))
 
 shinyApp(ui = ui, server = server)
-
-# TODO reactive stuff
-# TODO css or font size for tables
