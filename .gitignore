@@ -10,3 +10,5 @@ data/
 project.Rproj
 rsconnect/
 
+latex/**/*
+!latex/writeup.tex
